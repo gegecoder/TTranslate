@@ -1,0 +1,20 @@
+{
+  "name": "TTranslate",
+  "description": "TTranslate 是一款轻量的浏览器翻译扩展",
+  "version": "1.0.0",
+  "companyName": "心歌",
+  "productIdentifier": "com.xinge.ttranslate",
+  "fileDescription": "TTranslate浏览器翻译扩展",
+  "copyright": "(c) 2026, 心歌",
+  "homepage": "https://gitcode.com/qq_23994787/TTranslate",
+  "comments": "TTranslate浏览器翻译扩展",
+  "author": {
+    "name": "心歌",
+    "email": "eclipse8@qq.com",
+    "blog": "https://kevin.blog.csdn.net"
+  },
+  "update": {
+    "apiUrl": "https://api.gitcode.com/api/v5/repos/qq_23994787/TTranslate/releases/latest",
+    "releasePageBase": "https://gitcode.com/qq_23994787/TTranslate/releases/"
+  }
+}

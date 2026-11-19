@@ -1,0 +1,2003 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>TTranslate · 双语对照浏览器翻译扩展</title>
+<meta name="description" content="TTranslate 是一款轻量的浏览器翻译扩展：整页双语对照、8 种显示模式、划词即译、输入框按 / 直接翻译、专有名词保护，一键还原原文" />
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2064%2064'%3E%3Crect%20width='64'%20height='64'%20rx='16'%20fill='%232563eb'/%3E%3Crect%20x='16'%20y='15'%20width='32'%20height='7'%20rx='3.5'%20fill='%23fff'/%3E%3Crect%20x='28.5'%20y='15'%20width='7'%20height='35'%20rx='3.5'%20fill='%23fff'/%3E%3C/svg%3E" />
+<script>
+  // 在渲染前应用已保存的主题，避免暗色用户看到亮色闪烁
+  try { if (localStorage.getItem('tt-docs-theme') === 'dark') document.documentElement.setAttribute('data-theme', 'dark'); } catch (e) { /* ignore */ }
+</script>
+<style>
+  /* ============================================================
+     设计变量
+     ============================================================ */
+  :root {
+    --blue: #2563eb;
+    --blue-dark: #1d4ed8;
+    --blue-soft: #eef4ff;
+    --blue-line: #d7e4ff;
+    --ink: #0d1b2a;
+    --ink-2: #26384f;
+    --muted: #5f7189;
+    --muted-2: #8496ad;
+    --line: #e6ecf5;
+    --bg: #ffffff;
+    --bg-soft: #f6f9fe;
+    --amber: #f5b301;
+    --green: #12a06a;
+    --radius-l: 22px;
+    --radius-m: 14px;
+    --radius-s: 9px;
+    --shadow-s: 0 1px 2px rgba(16, 38, 74, .06), 0 4px 14px rgba(16, 38, 74, .05);
+    --shadow-m: 0 10px 30px rgba(19, 43, 82, .08), 0 2px 8px rgba(19, 43, 82, .05);
+    --shadow-l: 0 30px 70px rgba(19, 43, 82, .14), 0 8px 24px rgba(19, 43, 82, .06);
+    --font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+            "Hiragino Sans GB", "Microsoft YaHei", "Source Han Sans SC", sans-serif;
+    --mono: ui-monospace, SFMono-Regular, "JetBrains Mono", Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+
+  body {
+    margin: 0;
+    font-family: var(--font);
+    color: var(--ink);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.7;
+    overflow-x: hidden;
+  }
+
+  a { color: inherit; text-decoration: none; }
+  img, svg { display: block; max-width: 100%; }
+
+  .wrap {
+    width: 100%;
+    max-width: 1160px;
+    margin: 0 auto;
+    padding: 0 24px;
+  }
+
+  /* ============================================================
+     导航
+     ============================================================ */
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(255, 255, 255, .78);
+    backdrop-filter: saturate(180%) blur(14px);
+    -webkit-backdrop-filter: saturate(180%) blur(14px);
+    border-bottom: 1px solid transparent;
+    transition: border-color .25s, box-shadow .25s;
+  }
+  .nav.is-scrolled {
+    border-bottom-color: var(--line);
+    box-shadow: 0 6px 20px rgba(20, 40, 80, .04);
+  }
+  .nav-inner {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    height: 68px;
+  }
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 800;
+    font-size: 17px;
+    letter-spacing: -.2px;
+  }
+  .brand-mark {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    background: linear-gradient(145deg, #3b82f6, #1d4ed8 70%);
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-weight: 800;
+    font-size: 15px;
+    box-shadow: 0 6px 14px rgba(37, 99, 235, .32);
+  }
+  .nav-links {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-left: 14px;
+  }
+  .nav-links a {
+    font-size: 14.5px;
+    color: var(--ink-2);
+    padding: 8px 12px;
+    border-radius: 8px;
+    transition: background .2s, color .2s;
+  }
+  .nav-links a:hover { background: var(--blue-soft); color: var(--blue-dark); }
+  .nav-cta {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* 语言切换 */
+  .lang {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 38px;
+    padding: 2px;
+    border-radius: 9px;
+    background: #f2f6fd;
+    border: 1px solid var(--line);
+  }
+  .lang-btn {
+    font-family: var(--font);
+    font-size: 12.5px;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--muted);
+    background: none;
+    border: 0;
+    border-radius: 7px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    padding: 0 10px;
+    cursor: pointer;
+    transition: background .18s, color .18s, box-shadow .18s;
+  }
+  .lang-btn:hover { color: var(--blue-dark); }
+  .lang-btn[aria-pressed="true"] {
+    background: #fff;
+    color: var(--blue-dark);
+    box-shadow: 0 1px 3px rgba(19, 43, 82, .12);
+  }
+
+  /* 主题切换（亮色 / 暗色） */
+  .theme-btn {
+    width: 38px;
+    height: 38px;
+    display: grid;
+    place-items: center;
+    padding: 0;
+    border-radius: 9px;
+    background: #f2f6fd;
+    border: 1px solid var(--line);
+    color: var(--muted);
+    cursor: pointer;
+    transition: background .18s, color .18s, border-color .18s;
+  }
+  .theme-btn:hover { color: var(--blue-dark); border-color: var(--blue-line); }
+  .theme-btn svg { width: 17px; height: 17px; }
+  .theme-btn .ico-sun { display: none; }
+  html[data-theme="dark"] .theme-btn .ico-sun { display: block; }
+  html[data-theme="dark"] .theme-btn .ico-moon { display: none; }
+
+  /* 按钮 */
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 44px;
+    padding: 0 20px;
+    border-radius: 11px;
+    font-size: 15px;
+    font-weight: 600;
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: transform .18s, box-shadow .18s, background .18s, border-color .18s;
+    white-space: nowrap;
+  }
+  .btn-primary {
+    background: linear-gradient(180deg, #3b82f6, #2563eb);
+    color: #fff;
+    box-shadow: 0 10px 24px rgba(37, 99, 235, .28);
+  }
+  .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 16px 32px rgba(37, 99, 235, .34); }
+  .btn-ghost {
+    background: #fff;
+    border-color: var(--line);
+    color: var(--ink-2);
+    box-shadow: var(--shadow-s);
+  }
+  .btn-ghost:hover { border-color: var(--blue-line); color: var(--blue-dark); transform: translateY(-2px); }
+  .btn-sm { height: 38px; padding: 0 16px; font-size: 14px; border-radius: 9px; }
+
+  /* ============================================================
+     HERO
+     ============================================================ */
+  .hero {
+    position: relative;
+    padding: 78px 0 96px;
+    background:
+      radial-gradient(680px 380px at 88% 4%, rgba(37, 99, 235, .13), transparent 68%),
+      radial-gradient(560px 340px at 4% 22%, rgba(16, 185, 129, .10), transparent 72%),
+      linear-gradient(180deg, #fbfdff, #ffffff 55%);
+    overflow: hidden;
+  }
+  .hero::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: linear-gradient(rgba(37, 99, 235, .045) 1px, transparent 1px),
+                      linear-gradient(90deg, rgba(37, 99, 235, .045) 1px, transparent 1px);
+    background-size: 46px 46px;
+    mask-image: radial-gradient(circle at 50% 30%, #000 0%, transparent 72%);
+    -webkit-mask-image: radial-gradient(circle at 50% 30%, #000 0%, transparent 72%);
+    pointer-events: none;
+  }
+  .hero-grid {
+    position: relative;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 54px;
+    align-items: center;
+  }
+  .hero-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 12px 5px 6px;
+    border-radius: 999px;
+    background: #fff;
+    border: 1px solid var(--blue-line);
+    color: var(--blue-dark);
+    font-size: 13px;
+    font-weight: 600;
+    box-shadow: var(--shadow-s);
+  }
+  .hero-badge .dot {
+    width: 20px; height: 20px;
+    border-radius: 50%;
+    background: var(--blue-soft);
+    display: grid; place-items: center;
+    font-size: 11px;
+  }
+  h1 {
+    font-size: clamp(34px, 4.4vw, 54px);
+    line-height: 1.16;
+    letter-spacing: -1.4px;
+    margin: 20px 0 0;
+    font-weight: 800;
+  }
+  .grad-text {
+    background: linear-gradient(100deg, #2563eb 10%, #0ea5e9 50%, #12a06a 92%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .hero-sub {
+    margin: 20px 0 0;
+    font-size: 17px;
+    color: var(--muted);
+    max-width: 520px;
+  }
+  .hero-actions {
+    display: flex;
+    gap: 12px;
+    margin-top: 32px;
+    flex-wrap: wrap;
+  }
+  .hero-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 18px;
+    margin-top: 26px;
+    font-size: 13px;
+    color: var(--muted-2);
+  }
+  .hero-meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .hero-meta i {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: var(--green); display: inline-block;
+  }
+
+  /* Hero 右侧浏览器模拟 */
+  .stage { position: relative; }
+  .stage::before {
+    content: "";
+    position: absolute;
+    inset: 22px -18px -26px 10px;
+    border-radius: 30px;
+    background: linear-gradient(140deg, rgba(37, 99, 235, .16), rgba(16, 185, 129, .12));
+    filter: blur(34px);
+    z-index: 0;
+  }
+  .browser {
+    position: relative;
+    z-index: 1;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    box-shadow: var(--shadow-l);
+    overflow: hidden;
+    animation: float 7s ease-in-out infinite;
+  }
+  @keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-9px); }
+  }
+  .browser-bar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 38px;
+    padding: 0 12px;
+    background: #f8fafc;
+    border-bottom: 1px solid var(--line);
+  }
+  .browser-bar .dots { display: flex; gap: 5px; }
+  .browser-bar .dots i {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: #dfe6f0; display: block;
+  }
+  .browser-bar .dots i:nth-child(1) { background: #ffbdb6; }
+  .browser-bar .dots i:nth-child(2) { background: #ffe0a3; }
+  .browser-bar .dots i:nth-child(3) { background: #b6e8c8; }
+  .urlbar {
+    flex: 1;
+    height: 22px;
+    border-radius: 6px;
+    background: #fff;
+    border: 1px solid #e8eef7;
+    font-size: 10.5px;
+    color: var(--muted-2);
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    gap: 5px;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .tb-pin {
+    width: 20px; height: 20px;
+    border-radius: 5px;
+    display: grid; place-items: center;
+    background: var(--blue-soft);
+    color: var(--blue);
+    flex: none;
+  }
+  .browser-body { padding: 16px 18px 20px; }
+  .mock-nav {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 10.5px;
+    color: var(--muted);
+    padding-bottom: 12px;
+    border-bottom: 1px solid #f0f4fa;
+  }
+  .mock-nav b { color: var(--ink); font-size: 11.5px; }
+  .mock-nav .inline-tr {
+    color: var(--blue);
+    font-size: 9px;
+    background: var(--blue-soft);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+  .mock-doc { padding-top: 14px; }
+  .mock-h {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -.2px;
+    margin: 0 0 4px;
+  }
+  .mock-p {
+    font-size: 9.6px;
+    line-height: 1.75;
+    color: #7b8da5;
+    margin: 9px 0 3px;
+  }
+  .mock-tr {
+    font-size: 10.2px;
+    line-height: 1.8;
+    color: var(--ink-2);
+    background: #f4f8ff;
+    border-left: 3px solid #9dc0ff;
+    border-radius: 0 7px 7px 0;
+    padding: 7px 10px;
+    margin-bottom: 11px;
+    opacity: 0;
+    transform: translateY(4px);
+    animation: trIn .6s ease forwards;
+  }
+  .mock-tr:nth-of-type(2) { animation-delay: 1.0s; }
+  .mock-tr:nth-of-type(3) { animation-delay: 1.8s; }
+  @keyframes trIn { to { opacity: 1; transform: none; } }
+
+  /* 悬浮小徽标 */
+  .float-chip {
+    position: absolute;
+    z-index: 3;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: var(--shadow-m);
+    padding: 9px 13px;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: float 6s ease-in-out infinite;
+  }
+  .float-chip b { font-size: 12px; }
+  .float-chip small { display: block; color: var(--muted-2); font-size: 10px; line-height: 1.3; }
+  .float-chip.c1 { left: -26px; top: 32%; animation-delay: .6s; }
+  .float-chip.c2 { right: -20px; bottom: 12%; animation-delay: 1.4s; }
+  .chip-ico {
+    width: 26px; height: 26px; border-radius: 8px;
+    display: grid; place-items: center; flex: none;
+    font-size: 13px;
+  }
+  .ico-blue { background: var(--blue-soft); color: var(--blue); }
+  .ico-green { background: #e7f8f0; color: var(--green); }
+
+  /* ============================================================
+     指标条
+     ============================================================ */
+  .stats {
+    border-top: 1px solid var(--line);
+    border-bottom: 1px solid var(--line);
+    background: var(--bg-soft);
+  }
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    padding: 30px 0;
+  }
+  .stat {
+    text-align: center;
+    padding: 4px 12px;
+    border-right: 1px solid var(--line);
+  }
+  .stat:last-child { border-right: none; }
+  .stat b {
+    display: block;
+    font-size: 28px;
+    letter-spacing: -1px;
+    color: var(--ink);
+    line-height: 1.2;
+  }
+  .stat b em { font-style: normal; color: var(--blue); }
+  .stat span { font-size: 13px; color: var(--muted); }
+
+  /* ============================================================
+     通用区块
+     ============================================================ */
+  section.block { padding: 92px 0; }
+  .block-soft { background: var(--bg-soft); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+  .sec-head { max-width: 660px; margin: 0 auto 52px; text-align: center; }
+  h2 {
+    font-size: clamp(25px, 3vw, 36px);
+    line-height: 1.3;
+    letter-spacing: -.8px;
+    margin: 0 0 14px;
+    font-weight: 800;
+  }
+  .sec-head p { margin: 0; color: var(--muted); font-size: 16px; }
+
+  /* 功能卡 */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+  .card {
+    position: relative;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-l);
+    padding: 26px 24px 24px;
+    box-shadow: var(--shadow-s);
+    transition: transform .25s, box-shadow .25s, border-color .25s;
+    overflow: hidden;
+  }
+  .card:hover {
+    transform: translateY(-4px);
+    box-shadow: var(--shadow-m);
+    border-color: var(--blue-line);
+  }
+  .card-ico {
+    width: 44px;
+    height: 44px;
+    border-radius: 13px;
+    display: grid;
+    place-items: center;
+    margin-bottom: 18px;
+    background: linear-gradient(150deg, #eef4ff, #e2edff);
+    color: var(--blue);
+  }
+  .card-ico svg { width: 22px; height: 22px; }
+  .card h3 { margin: 0 0 8px; font-size: 17.5px; letter-spacing: -.3px; }
+  .card p { margin: 0; font-size: 14px; color: var(--muted); line-height: 1.75; }
+  .card .tagline {
+    display: inline-block;
+    margin-top: 14px;
+    font-size: 12px;
+    font-family: var(--mono);
+    color: var(--blue-dark);
+    background: var(--blue-soft);
+    border-radius: 6px;
+    padding: 3px 8px;
+  }
+
+  /* ============================================================
+     渲染演示（可交互）
+     ============================================================ */
+  .demo {
+    display: grid;
+    grid-template-columns: 400px 1fr;
+    gap: 26px;
+    align-items: start;
+  }
+  .demo-controls {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-l);
+    padding: 22px;
+    box-shadow: var(--shadow-s);
+    position: sticky;
+    top: 92px;
+  }
+  .ctrl-group + .ctrl-group { margin-top: 22px; }
+  .ctrl-label {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--muted-2);
+    letter-spacing: .6px;
+    margin-bottom: 10px;
+  }
+  .chips { display: flex; flex-wrap: wrap; gap: 7px; }
+  .chip {
+    font-family: var(--font);
+    font-size: 13px;
+    color: var(--ink-2);
+    background: #f7f9fd;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 7px 11px;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: all .18s;
+  }
+  .chip:hover { border-color: var(--blue-line); color: var(--blue-dark); }
+  .chip[aria-pressed="true"] {
+    background: var(--blue);
+    border-color: var(--blue);
+    color: #fff;
+    box-shadow: 0 6px 14px rgba(37, 99, 235, .24);
+  }
+
+  .demo-screen {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-l);
+    box-shadow: var(--shadow-m);
+    overflow: hidden;
+  }
+  .demo-topbar {
+    height: 40px;
+    border-bottom: 1px solid var(--line);
+    background: #f8fafc;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 0 14px;
+  }
+  .demo-topbar .dots { display: flex; gap: 5px; }
+  .demo-topbar .dots i { width: 8px; height: 8px; border-radius: 50%; background: #dfe6f0; }
+  .demo-topbar .dots i:nth-child(1) { background: #ffbdb6; }
+  .demo-topbar .dots i:nth-child(2) { background: #ffe0a3; }
+  .demo-topbar .dots i:nth-child(3) { background: #b6e8c8; }
+  .demo-topbar .path { font-size: 11px; color: var(--muted-2); font-family: var(--mono); }
+  .demo-page { padding: 26px 30px 30px; min-height: 300px; }
+  .demo-crumb {
+    font-size: 12px;
+    color: var(--muted-2);
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+  }
+  .demo-crumb .sep { color: #cfd9e6; }
+  .demo-crumb .tr-inline {
+    color: var(--blue);
+    background: var(--blue-soft);
+    border-radius: 4px;
+    padding: 0 5px;
+    font-size: 11px;
+  }
+  .demo-title {
+    font-size: 21px;
+    margin: 0 0 16px;
+    letter-spacing: -.4px;
+    line-height: 1.4;
+  }
+  .demo-title .tr-inline {
+    display: block;
+    font-size: 15px;
+    font-weight: 500;
+    color: var(--blue);
+    background: var(--blue-soft);
+    border-radius: 5px;
+    padding: 1px 6px;
+    margin-top: 6px;
+    width: fit-content;
+  }
+  .demo-p {
+    font-size: 14.5px;
+    line-height: 1.85;
+    color: #45566d;
+    margin: 0 0 6px;
+  }
+  .demo-tr {
+    font-size: 14px;
+    line-height: 1.85;
+    color: var(--ink-2);
+    margin: 0 0 20px;
+    padding: 9px 14px;
+    background: #f4f8ff;
+    border-radius: 10px;
+  }
+  /* 主题：无 */
+  .demo-body[data-theme="none"] .demo-tr { background: transparent; border: 0; padding: 0; }
+  /* 主题：虚线下划线 */
+  .demo-body[data-theme="dashed"] .demo-tr {
+    background: transparent; padding: 0;
+    border-bottom: 2px dashed #8fb4f0;
+  }
+  /* 主题：实线强调 */
+  .demo-body[data-theme="underline"] .demo-tr {
+    background: transparent; padding: 0;
+    border-bottom: 2px solid #3b82f6;
+  }
+  /* 主题：引用块 */
+  .demo-body[data-theme="blockquote"] .demo-tr {
+    background: #f7f9fd;
+    border-left: 4px solid #c3d4ef;
+    border-radius: 0 8px 8px 0;
+  }
+  /* 主题：波浪下划线 */
+  .demo-body[data-theme="wavy"] .demo-tr {
+    background: transparent;
+    padding: 0;
+    text-decoration: underline wavy #3b82f6 1.5px;
+  }
+  /* 主题：卡片投影 */
+  .demo-body[data-theme="card"] .demo-tr {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: 0 3px 12px rgba(19, 43, 82, .12);
+  }
+  /* 主题：半透明毛玻璃 */
+  .demo-body[data-theme="glass"] .demo-tr {
+    background: rgba(37, 99, 235, .10);
+    border: 1px solid rgba(19, 43, 82, .08);
+    border-radius: 10px;
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+  /* 主题：荧光笔 */
+  .demo-body[data-theme="marker"] .demo-tr {
+    background: rgba(255, 236, 156, .62);
+    border: 0;
+    border-radius: 6px;
+  }
+  .demo-src { min-width: 0; }
+  /* 位置：译文在原文之前 */
+  .demo-body[data-pos="before"]:not([data-mode="sideBySide"]) .pair {
+    display: flex;
+    flex-direction: column-reverse;
+  }
+  /* 显示模式：原处替换（译文直接写回原文位置） */
+  .demo-body[data-mode="replace"] .demo-src,
+  .demo-body[data-mode="replace"] .tr-inline { display: none; }
+  .demo-body[data-mode="replace"] .demo-tr {
+    background: transparent;
+    padding: 0;
+    border: 0;
+    box-shadow: none;
+  }
+  /* 显示模式：悬停展开（鼠标移入段落才显示译文） */
+  .demo-body[data-mode="hover"] .demo-tr { display: none; }
+  .demo-body[data-mode="hover"] .pair:hover .demo-tr { display: block; }
+  /* 显示模式：左右对照（原文与译文各占一栏） */
+  .demo-body[data-mode="sideBySide"] .pair {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 18px;
+    align-items: start;
+  }
+  .demo-body[data-mode="sideBySide"] .tr-inline { display: none; }
+  .demo-body[data-mode="sideBySide"] .demo-tr { margin-bottom: 24px; }
+
+  /* ============================================================
+     工作原理
+     ============================================================ */
+  .flow {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    counter-reset: flow;
+  }
+  .flow-item {
+    position: relative;
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-m);
+    padding: 22px 20px;
+    box-shadow: var(--shadow-s);
+  }
+  .flow-item::before {
+    counter-increment: flow;
+    content: "0" counter(flow);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--blue);
+    background: var(--blue-soft);
+    border-radius: 7px;
+    padding: 3px 8px;
+    display: inline-block;
+    margin-bottom: 12px;
+  }
+  .flow-item h4 { margin: 0 0 6px; font-size: 15px; }
+  .flow-item p { margin: 0; font-size: 13px; color: var(--muted); line-height: 1.75; }
+
+  /* ============================================================
+     场景
+     ============================================================ */
+  .scenes {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+  }
+  .scene {
+    border-radius: var(--radius-l);
+    padding: 28px 26px;
+    border: 1px solid var(--line);
+    background: linear-gradient(170deg, #ffffff, #f8fbff);
+    box-shadow: var(--shadow-s);
+  }
+  .scene .emoji {
+    font-size: 22px;
+    width: 46px; height: 46px;
+    border-radius: 13px;
+    display: grid; place-items: center;
+    background: #fff;
+    border: 1px solid var(--line);
+    margin-bottom: 16px;
+    box-shadow: var(--shadow-s);
+  }
+  .scene h4 { margin: 0 0 8px; font-size: 16px; }
+  .scene p { margin: 0; font-size: 13.5px; color: var(--muted); }
+  .scene em {
+    display: block;
+    margin-top: 14px;
+    font-style: normal;
+    font-size: 12.5px;
+    color: var(--blue-dark);
+  }
+
+  /* ============================================================
+     快捷键 + 安装
+     ============================================================ */
+  .install-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 34px;
+    align-items: start;
+  }
+  .panel {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-l);
+    padding: 30px;
+    box-shadow: var(--shadow-s);
+  }
+  .panel h3 { margin: 0 0 20px; font-size: 19px; letter-spacing: -.3px; }
+  .keyrow {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 13px 0;
+    border-bottom: 1px dashed var(--line);
+    font-size: 14px;
+  }
+  .keyrow:last-child { border-bottom: 0; padding-bottom: 0; }
+  .keyrow span { color: var(--ink-2); }
+  .keyrow .desc { margin-left: auto; color: var(--muted); font-size: 13px; text-align: right; }
+  kbd {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink);
+    background: #f4f7fc;
+    border: 1px solid #dfe7f3;
+    border-bottom-width: 2px;
+    border-radius: 6px;
+    padding: 3px 8px;
+    white-space: nowrap;
+  }
+  .steps { counter-reset: step; list-style: none; margin: 0; padding: 0; }
+  .steps li {
+    counter-increment: step;
+    position: relative;
+    padding: 0 0 20px 46px;
+    font-size: 14px;
+    color: var(--ink-2);
+  }
+  .steps li:last-child { padding-bottom: 0; }
+  .steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0; top: -2px;
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    background: var(--blue-soft);
+    color: var(--blue);
+    font-weight: 700;
+    font-size: 13px;
+    display: grid; place-items: center;
+  }
+  .steps li b { display: block; color: var(--ink); margin-bottom: 2px; }
+  .code-inline {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: #f4f7fc;
+    border: 1px solid #e4ebf6;
+    border-radius: 5px;
+    padding: 1px 6px;
+    color: var(--blue-dark);
+    word-break: break-all;
+  }
+  a.code-inline { text-decoration: none; }
+  a.code-inline:hover { text-decoration: underline; }
+
+  /* ============================================================
+     FAQ
+     ============================================================ */
+  .faq { max-width: 820px; margin: 0 auto; }
+  .faq-item {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-m);
+    background: #fff;
+    margin-bottom: 12px;
+    overflow: hidden;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .faq-item[open] { border-color: var(--blue-line); box-shadow: var(--shadow-s); }
+  .faq-item summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 18px 22px;
+    font-size: 15px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .faq-item summary::-webkit-details-marker { display: none; }
+  .faq-item summary::after {
+    content: "+";
+    margin-left: auto;
+    color: var(--blue);
+    font-size: 20px;
+    font-weight: 400;
+    line-height: 1;
+    transition: transform .2s;
+  }
+  .faq-item[open] summary::after { transform: rotate(45deg); }
+  .faq-body {
+    padding: 0 22px 20px;
+    font-size: 14px;
+    color: var(--muted);
+    line-height: 1.8;
+  }
+  .faq-body p { margin: 0 0 8px; }
+  .faq-body p:last-child { margin-bottom: 0; }
+
+  /* ============================================================
+     CTA + 页脚
+     ============================================================ */
+  .cta {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(135deg, #14357a, #1d4ed8 48%, #0ea5e9);
+    color: #fff;
+    border-radius: 0;
+    padding: 76px 0;
+    text-align: center;
+  }
+  .cta::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(circle at 20% 20%, rgba(255, 255, 255, .16), transparent 45%),
+                      radial-gradient(circle at 82% 78%, rgba(255, 255, 255, .12), transparent 42%);
+  }
+  .cta .inner { position: relative; z-index: 2; }
+  .cta h2 { color: #fff; margin-bottom: 12px; }
+  .cta p { color: rgba(255, 255, 255, .82); margin: 0 auto 28px; max-width: 560px; font-size: 16px; }
+  .cta .btn-white {
+    background: #fff;
+    color: var(--blue-dark);
+    box-shadow: 0 14px 34px rgba(0, 0, 0, .18);
+  }
+  .cta .btn-white:hover { transform: translateY(-2px); box-shadow: 0 20px 40px rgba(0, 0, 0, .22); }
+  .cta .btn-outline-light {
+    background: rgba(255, 255, 255, .1);
+    border-color: rgba(255, 255, 255, .38);
+    color: #fff;
+  }
+  .cta .btn-outline-light:hover { background: rgba(255, 255, 255, .18); }
+
+  footer {
+    background: #0b1524;
+    color: #93a4bb;
+    padding: 48px 0 34px;
+    font-size: 13.5px;
+  }
+  .foot-top {
+    display: flex;
+    justify-content: flex-end;
+    gap: 28px;
+    flex-wrap: wrap;
+    padding-bottom: 26px;
+    border-bottom: 1px solid rgba(255, 255, 255, .08);
+  }
+  .foot-links { display: flex; gap: 56px; flex-wrap: wrap; }
+  .foot-col b { display: block; color: #cfdaea; font-size: 13px; margin-bottom: 10px; font-weight: 600; }
+  .foot-col a { display: block; color: #8b9cb3; margin-bottom: 7px; transition: color .18s; }
+  .foot-col a:hover { color: #fff; }
+  .foot-bottom {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding-top: 22px;
+    color: #6b7d95;
+    font-size: 12.5px;
+  }
+
+  /* ============================================================
+     暗色主题（右上角切换，默认亮色）
+     ============================================================ */
+  html[data-theme="dark"] {
+    color-scheme: dark;
+    --blue-dark: #8ab6ff;
+    --blue-soft: rgba(59, 130, 246, .16);
+    --blue-line: rgba(110, 155, 255, .35);
+    --ink: #e8eef7;
+    --ink-2: #c6d3e6;
+    --muted: #8ea1ba;
+    --muted-2: #69809c;
+    --line: #22314c;
+    --bg: #0d1522;
+    --bg-soft: #0f1a2b;
+    --shadow-s: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 14px rgba(0, 0, 0, .3);
+    --shadow-m: 0 10px 30px rgba(0, 0, 0, .45), 0 2px 8px rgba(0, 0, 0, .3);
+    --shadow-l: 0 30px 70px rgba(0, 0, 0, .55), 0 8px 24px rgba(0, 0, 0, .35);
+  }
+  html[data-theme="dark"] .nav { background: rgba(13, 21, 34, .82); }
+  html[data-theme="dark"] .nav.is-scrolled { box-shadow: 0 6px 20px rgba(0, 0, 0, .35); }
+  html[data-theme="dark"] .lang,
+  html[data-theme="dark"] .theme-btn,
+  html[data-theme="dark"] .btn-ghost,
+  html[data-theme="dark"] .hero-badge,
+  html[data-theme="dark"] .float-chip,
+  html[data-theme="dark"] .chip,
+  html[data-theme="dark"] .scene .emoji,
+  html[data-theme="dark"] kbd,
+  html[data-theme="dark"] .code-inline { background: #16202f; }
+  html[data-theme="dark"] .lang-btn[aria-pressed="true"] { background: #1f2c40; box-shadow: 0 1px 3px rgba(0, 0, 0, .5); }
+  html[data-theme="dark"] .hero {
+    background:
+      radial-gradient(680px 380px at 88% 4%, rgba(37, 99, 235, .16), transparent 68%),
+      radial-gradient(560px 340px at 4% 22%, rgba(16, 185, 129, .10), transparent 72%),
+      linear-gradient(180deg, #0e1726, #0d1522 55%);
+  }
+  html[data-theme="dark"] .browser,
+  html[data-theme="dark"] .card,
+  html[data-theme="dark"] .demo-controls,
+  html[data-theme="dark"] .demo-screen,
+  html[data-theme="dark"] .flow-item,
+  html[data-theme="dark"] .panel,
+  html[data-theme="dark"] .faq-item { background: #111c2e; }
+  html[data-theme="dark"] .browser-bar,
+  html[data-theme="dark"] .demo-topbar { background: #0f1a2b; }
+  html[data-theme="dark"] .urlbar { background: #0c1522; border-color: #22314b; }
+  html[data-theme="dark"] .mock-nav { border-bottom-color: #1c2a44; }
+  html[data-theme="dark"] .mock-p { color: #7f92ab; }
+  html[data-theme="dark"] .mock-tr { background: rgba(59, 130, 246, .12); border-left-color: #3b6fc9; }
+  html[data-theme="dark"] .card-ico { background: linear-gradient(150deg, rgba(59, 130, 246, .2), rgba(59, 130, 246, .1)); }
+  html[data-theme="dark"] .ico-green { background: rgba(18, 160, 106, .16); }
+  html[data-theme="dark"] .demo-p { color: #a9b8cd; }
+  html[data-theme="dark"] .demo-tr { background: rgba(59, 130, 246, .12); }
+  html[data-theme="dark"] .demo-body[data-theme="blockquote"] .demo-tr { background: #16202f; border-left-color: #35507e; }
+  html[data-theme="dark"] .demo-body[data-theme="card"] .demo-tr { background: #111c2e; }
+  html[data-theme="dark"] .scene { background: linear-gradient(170deg, #111c2e, #0f1a2b); }
+  html[data-theme="dark"] .demo-crumb .sep { color: #3a4c66; }
+  html[data-theme="dark"] .cta .btn-white { color: #1d4ed8; }
+
+  /* 滚动出现动画 */
+  .reveal {
+    opacity: 0;
+    transform: translateY(18px);
+    transition: opacity .65s cubic-bezier(.22, .61, .36, 1), transform .65s cubic-bezier(.22, .61, .36, 1);
+  }
+  .reveal.in { opacity: 1; transform: none; }
+
+  /* ============================================================
+     响应式
+     ============================================================ */
+  @media (max-width: 1000px) {
+    .hero-grid { grid-template-columns: 1fr; gap: 48px; }
+    .hero-sub { max-width: none; }
+    .stage { max-width: 560px; }
+    .cards { grid-template-columns: repeat(2, 1fr); }
+    .demo { grid-template-columns: 1fr; }
+    .demo-controls { position: static; }
+    .flow { grid-template-columns: repeat(2, 1fr); }
+    .scenes { grid-template-columns: 1fr; }
+    .install-grid { grid-template-columns: 1fr; }
+    .float-chip.c1 { left: -8px; }
+    .float-chip.c2 { right: -8px; }
+  }
+  @media (max-width: 900px) {
+    .nav-links { display: none; }
+  }
+  @media (max-width: 760px) {
+    .nav-links { display: none; }
+    .nav-cta .hide-sm { display: none; }
+    .nav-cta { gap: 8px; }
+    .hero { padding: 52px 0 66px; }
+    section.block { padding: 66px 0; }
+    .cards { grid-template-columns: 1fr; }
+    .stats-grid { grid-template-columns: repeat(2, 1fr); gap: 22px 0; }
+    .stat:nth-child(2) { border-right: none; }
+    .stat b { font-size: 23px; }
+    .flow { grid-template-columns: 1fr; }
+    .demo-page { padding: 20px 18px 24px; }
+    .float-chip { display: none; }
+    .hero-meta { font-size: 12px; }
+    .foot-links { gap: 32px; }
+    .panel { padding: 22px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+    .reveal { opacity: 1; transform: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ============================ 导航 ============================ -->
+<header class="nav" id="nav">
+  <div class="wrap nav-inner">
+    <a class="brand" href="#top">
+      <span class="brand-mark">T</span>
+      <span>TTranslate</span>
+    </a>
+    <nav class="nav-links">
+      <a href="#features">核心功能</a>
+      <a href="#render">译文样式</a>
+      <a href="#how">工作原理</a>
+      <a href="#scenes">适用场景</a>
+      <a href="#install">安装使用</a>
+    </nav>
+    <div class="nav-cta">
+      <a class="btn btn-ghost btn-sm hide-sm" href="#faq">常见问题</a>
+      <button type="button" class="theme-btn" id="theme-toggle" aria-label="切换亮色 / 暗色主题" title="切换亮色 / 暗色主题">
+        <svg class="ico-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a7 7 0 0 0 11 11z"/></svg>
+        <svg class="ico-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"/></svg>
+      </button>
+      <div class="lang" role="group" aria-label="语言 / Language">
+        <button type="button" class="lang-btn" data-lang="zh" aria-pressed="true">中文</button>
+        <button type="button" class="lang-btn" data-lang="en" aria-pressed="false">EN</button>
+      </div>
+    </div>
+  </div>
+</header>
+
+<!-- ============================ Hero ============================ -->
+<section class="hero" id="top">
+  <div class="wrap hero-grid">
+    <div>
+      <span class="hero-badge"><span class="dot">✦</span><span>v<b data-cfg="version">0.1.x</b></span></span>
+      <h1>读懂每一个网页<br /><span class="grad-text">原文与译文，同屏对照</span></h1>
+      <p class="hero-sub">
+        TTranslate 是一款轻量的浏览器翻译扩展。整页双语对照、8 种显示模式、划词即译、输入框按 <kbd>/</kbd> 直译，一键还原原文；默认接入 Bing 免费翻译，并内置专有名词保护与本地缓存，为您提供清爽便捷的外文网页阅读体验。
+      </p>
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="https://gitcode.com/qq_23994787/TTranslate/releases/"
+           data-cfg-href="update.releasePageBase" target="_blank" rel="noopener">下载扩展 (.crx)</a>
+        <a class="btn btn-ghost" href="#install">安装步骤</a>
+      </div>
+      <div class="hero-meta">
+        <span><i></i>本地缓存，译文秒回</span>
+        <span><i></i>8 种显示模式 · 8 种显示主题</span>
+        <span><i></i>中文 / English 界面</span>
+      </div>
+    </div>
+
+    <div class="stage">
+      <div class="browser">
+        <div class="browser-bar">
+          <span class="dots"><i></i><i></i><i></i></span>
+          <div class="urlbar">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#8496ad" stroke-width="2.4"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+            docs.example.dev/guide/architecture
+          </div>
+          <span class="tb-pin" title="图钉">
+            <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M14.5 2.5a1 1 0 0 1 1.4 0l5.6 5.6a1 1 0 0 1 0 1.4l-1.3 1.3a2 2 0 0 1-1.6.6l-3.4 3.4.5 3.3a1 1 0 0 1-1.7.9l-4.2-4.2-5.1 5.1a1 1 0 1 1-1.4-1.4l5.1-5.1-4.2-4.2a1 1 0 0 1 .9-1.7l3.3.5 3.4-3.4a2 2 0 0 1 .6-1.6z"/></svg>
+          </span>
+        </div>
+        <div class="browser-body">
+          <div class="mock-nav">
+            <b>Docs</b>
+            <span>Guide</span>
+            <span class="inline-tr">指南</span>
+            <span>API</span>
+            <span class="inline-tr">接口</span>
+            <span style="margin-left:auto">Alt+T</span>
+          </div>
+          <div class="mock-doc">
+            <p class="mock-h">How the rendering pipeline works</p>
+            <div class="mock-tr" style="animation-delay:.25s">译文渲染管线是如何工作的</div>
+            <p class="mock-p">Every translatable paragraph on the page is collected, then merged into a batch before being sent to the translation service.</p>
+            <div class="mock-tr">收集网页每个可翻译段落，合并成批次后发送给翻译服务。</div>
+            <p class="mock-p">Block-level paragraphs render as cards, while navigation links render inline to keep the layout intact.</p>
+            <div class="mock-tr">块级段落以卡片形式渲染，导航链接则使用内联译文，保持布局不被撑高。</div>
+            <p class="mock-p">Results are cached locally, so revisiting a page returns translations instantly.</p>
+            <div class="mock-tr">译文会被本地缓存，再次访问同一页面时几乎瞬间返回。</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="float-chip c1">
+        <span class="chip-ico ico-green">✓</span>
+        <span><b>翻译完成</b><small>48 / 48 段落</small></span>
+      </div>
+      <div class="float-chip c2">
+        <span class="chip-ico ico-blue">T</span>
+        <span><b>划词即译</b><small>可拖拽 · 可固定</small></span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 指标 ============================ -->
+<div class="stats">
+  <div class="wrap stats-grid">
+    <div class="stat"><b><em>8</em> 种</b><span>显示主题</span></div>
+    <div class="stat"><b><em>8</em> 种</b><span>显示模式</span></div>
+    <div class="stat"><b><em>5</em> 种</b><span>翻译入口</span></div>
+    <div class="stat"><b><em>1</em> 键</b><span>还原原文</span></div>
+  </div>
+</div>
+
+<!-- ============================ 核心功能 ============================ -->
+<section class="block" id="features">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <h2>一个扩展，从整页到单词</h2>
+      <p>整页精读、划词查词、输入框直译、普通翻译面板 —— 需要多少，就翻译多少。</p>
+    </div>
+
+    <div class="cards">
+      <article class="card reveal">
+        <div class="card-ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 9h18M8 4v5M12 13h5M12 16.5h3"/>
+          </svg>
+        </div>
+        <h3>整页翻译，八种显示模式</h3>
+        <p>双语对照、左右对照、句级交错、悬停展开、悬停浮层、点击展开、原处替换、原处替换 + 悬停看原文，随时切换；导航与面包屑自动改用紧凑内联译文。</p>
+        <span class="tagline">Alt+Shift+T 轮转切换</span>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3a9 9 0 1 0 0 18c1.4 0 2.2-.9 2.2-2 0-1.3-1-1.8-1-2.9 0-1 .8-1.7 1.9-1.7H17a4 4 0 0 0 4-4C21 6.2 17 3 12 3z"/><circle cx="7.5" cy="11.5" r="1.1"/><circle cx="10.5" cy="7.5" r="1.1"/><circle cx="15" cy="8" r="1.1"/>
+          </svg>
+        </div>
+        <h3>译文样式随心调</h3>
+        <p>纯文本、虚线下划线、实线强调、波浪下划线、引用块、卡片投影、半透明毛玻璃、荧光笔 8 种显示主题，颜色、字号、译文位置都可调。</p>
+        <span class="tagline">8 主题 · 支持自定义颜色</span>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5l3 1.8"/>
+          </svg>
+        </div>
+        <h3>三态按钮与实时进度</h3>
+        <p>「翻译」→「翻译中 12/48」→「还原」，进度实时可见；取消、断网、卡住都有收尾兜底。MutationObserver 加 SPA 路由监听，滚动加载、切换页面后新出现的内容自动补齐译文。</p>
+        <span class="tagline">Alt+T 一键切换 · 动态跟随</span>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 5.5h9M8.5 5.5v2c0 3.2-2 6-4.5 7.5"/><path d="M6 9c1.2 2.6 3 4.3 5.5 5.2"/><path d="M13 19l4-10 4 10M14.6 15.6h4.8"/>
+          </svg>
+        </div>
+        <h3>划词翻译</h3>
+        <p>选中任意文字即可翻译，可选「直接显示浮层」或「先显示 T 图标」；面板可拖拽、可图钉固定，原文可改写重译，语言对随手切换，译文一键复制。</p>
+        <span class="tagline">direct / icon 两种模式</span>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="6" width="18" height="12" rx="2"/><path d="M7 10h4M7 13.5h7M17 3v3M17 18v3"/>
+          </svg>
+        </div>
+        <h3>输入框翻译</h3>
+        <p>在任意 input、textarea 或富文本编辑器中敲 <kbd>/</kbd>，当前内容就地替换为译文，写完邮件不用切窗口。</p>
+        <span class="tagline">contenteditable 同样生效</span>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 10v4M8 7v10M12 4.5v15M16 8v8M20 10.5v3"/>
+          </svg>
+        </div>
+        <h3>单词音标与语音朗读</h3>
+        <p>翻译单个英文单词时自动附上英式 / 美式音标与发音按钮，有道优先、Free Dictionary 兜底，划词与普通翻译共用。</p>
+        <span class="tagline">只对单词生效，不打扰句子</span>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3l7 3v5c0 4.4-3 8.2-7 9.5-4-1.3-7-5.1-7-9.5V6z"/><path d="M9 11.5l2 2 4-4"/>
+          </svg>
+        </div>
+        <h3>专有名词保护</h3>
+        <p>内置10 套领域词库，可自定义关键词，让品牌与技术名词保持原文，避免直译。</p>
+        <span class="tagline">长词优先 · 模板随切随用</span>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="8.5"/><path d="M6 18L18 6"/>
+          </svg>
+        </div>
+        <h3>按段落忽略</h3>
+        <p><kbd>Alt</kbd> + 点击任意段落即可忽略该段翻译，再次 <kbd>Alt</kbd> + 点击同一段即可恢复；忽略状态按域名保存，刷新后依然有效。</p>
+        <span class="tagline">Alt + 点击 · 按站点记忆</span>
+      </article>
+
+      <article class="card reveal">
+        <div class="card-ico">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.5 2.4 3.8 5.4 3.8 8.5S14.5 18.1 12 20.5c-2.5-2.4-3.8-5.4-3.8-8.5S9.5 5.9 12 3.5z"/>
+          </svg>
+        </div>
+        <h3>界面主题与多语言</h3>
+        <p>10 套界面主题（亮色、暗色与 8 种配色）可选，自定义主题支持本地背景图、透明度和文字颜色；界面支持中文 / English 即时切换。</p>
+        <span class="tagline">设置与划词浮层同步换肤</span>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 渲染样式演示 ============================ -->
+<section class="block block-soft" id="render">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <h2>译文怎么排，由你决定</h2>
+      <p>切换下面的选项，实时预览显示模式与显示主题的组合效果；「悬停展开」模式下把鼠标移到段落上即可看到译文。</p>
+    </div>
+
+    <div class="demo">
+      <aside class="demo-controls reveal">
+        <div class="ctrl-group">
+          <div class="ctrl-label">显示模式</div>
+          <div class="chips" id="chips-mode">
+            <button class="chip" data-value="dual" aria-pressed="true">双语对照</button>
+            <button class="chip" data-value="replace" aria-pressed="false">原处替换</button>
+            <button class="chip" data-value="hover" aria-pressed="false">悬停展开</button>
+            <button class="chip" data-value="sideBySide" aria-pressed="false">左右对照</button>
+          </div>
+        </div>
+        <div class="ctrl-group">
+          <div class="ctrl-label">显示主题</div>
+          <div class="chips" id="chips-theme">
+            <button class="chip" data-value="none" aria-pressed="true">纯文本</button>
+            <button class="chip" data-value="dashed" aria-pressed="false">虚线下划线</button>
+            <button class="chip" data-value="underline" aria-pressed="false">实线强调</button>
+            <button class="chip" data-value="wavy" aria-pressed="false">波浪下划线</button>
+            <button class="chip" data-value="blockquote" aria-pressed="false">引用块</button>
+            <button class="chip" data-value="card" aria-pressed="false">卡片投影</button>
+            <button class="chip" data-value="glass" aria-pressed="false">毛玻璃</button>
+            <button class="chip" data-value="marker" aria-pressed="false">荧光笔</button>
+          </div>
+        </div>
+        <div class="ctrl-group">
+          <div class="ctrl-label">译文位置</div>
+          <div class="chips" id="chips-pos">
+            <button class="chip" data-value="after" aria-pressed="true">原文之后</button>
+            <button class="chip" data-value="before" aria-pressed="false">原文之前</button>
+          </div>
+        </div>
+      </aside>
+
+      <div class="demo-screen reveal">
+        <div class="demo-topbar">
+          <span class="dots"><i></i><i></i><i></i></span>
+          <span class="path">blog.example.com / posts / reading-in-two-languages</span>
+        </div>
+        <div class="demo-page">
+          <div class="demo-crumb">
+            <span>Home</span><span class="sep">/</span>
+            <span>Blog</span><span class="tr-inline">博客</span><span class="sep">/</span>
+            <span>Reading</span><span class="tr-inline">阅读</span>
+          </div>
+          <div class="demo-body" id="demo-body" data-mode="dual" data-theme="none" data-pos="after">
+            <div class="pair">
+              <div class="demo-src">
+                <h3 class="demo-title">
+                  <span class="src">Reading in two languages</span>
+                  <span class="tr-inline">用两种语言阅读</span>
+                </h3>
+                <p class="demo-p">Bilingual reading keeps the original text in view while the translation sits right beside it, so you can check any sentence without switching tabs.</p>
+              </div>
+              <div class="demo-tr">双语阅读让原文始终留在视野里，译文就紧贴在旁，任何一句都能随时核对，不用来回切换标签页。</div>
+            </div>
+            <div class="pair">
+              <div class="demo-src">
+                <p class="demo-p">Navigation and breadcrumbs use a compact inline translation, so the layout never grows taller than it should.</p>
+              </div>
+              <div class="demo-tr">导航和面包屑使用紧凑的内联译文，因此布局不会被撑高。</div>
+            </div>
+            <div class="pair">
+              <div class="demo-src">
+                <p class="demo-p">Every paragraph is cached after the first request. Coming back to the same page feels instant.</p>
+              </div>
+              <div class="demo-tr">每个段落首次请求后都会被缓存，再次回到同一页面几乎瞬间完成。</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 工作原理 ============================ -->
+<section class="block" id="how">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <h2>四步走完一次整页翻译</h2>
+      <p>从找到该翻译的文本，到把译文稳稳地放回原位，每一步都可解释、可调试。</p>
+    </div>
+
+    <div class="flow">
+      <div class="flow-item reveal">
+        <h4>加载引擎</h4>
+        <p>访客打开网页时先做安全检查，跳过广告域名与验证页，再动态加载翻译引擎</p>
+      </div>
+      <div class="flow-item reveal">
+        <h4>智能取段</h4>
+        <p>遍历文本节点，排除脚本、代码与不翻译区域，按块级祖先合并成段落，并单独识别导航区域</p>
+      </div>
+      <div class="flow-item reveal">
+        <h4>批量翻译</h4>
+        <p>后台统一出网，按服务限制合批并发、超长段落自动切块并带重试；专有名词先占位，结果写入本地缓存</p>
+      </div>
+      <div class="flow-item reveal">
+        <h4>原位渲染</h4>
+        <p>按显示模式生成块级或行内译文，并针对表格、卡片、横幅等特殊布局做兼容渲染</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 场景 ============================ -->
+<section class="block block-soft" id="scenes">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <h2>把外语网页变成可读的学习资料</h2>
+      <p>从陌生的语言，到把「看懂」这一步的成本降到最低。</p>
+    </div>
+
+    <div class="scenes">
+      <article class="scene reveal">
+        <div class="emoji">📚</div>
+        <h4>论文与文档研读</h4>
+        <p>英文技术文档、论文页面双语对照阅读，专业术语保持原文，公式与代码块原样保留。</p>
+        <em>推荐：左右对照 + 虚线下划线</em>
+      </article>
+      <article class="scene reveal">
+        <div class="emoji">💻</div>
+        <h4>开发与排查问题</h4>
+        <p>在 GitHub Issue、Stack Overflow 里快速扫读，划词翻译顺手查生词，不打断当前思路。</p>
+        <em>推荐：划词翻译 + 图标模式</em>
+      </article>
+      <article class="scene reveal">
+        <div class="emoji">✍️</div>
+        <h4>写作与邮件回复</h4>
+        <p>在编辑器里写完中文，敲一个 <kbd>/</kbd> 就地换成英文；译文结果还能直接复制走。</p>
+        <em>推荐：输入框翻译 + 普通翻译面板</em>
+      </article>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 快捷键 + 安装 ============================ -->
+<section class="block" id="install">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <h2>三步安装，一分钟后开始使用</h2>
+    </div>
+
+    <div class="install-grid">
+      <div class="panel reveal">
+        <h3>安装步骤</h3>
+        <ol class="steps">
+          <li>
+            <b>打开扩展管理页</b>
+            在地址栏输入 <span class="code-inline">chrome://extensions/</span>（Edge 为 <span class="code-inline">edge://extensions/</span>）。
+          </li>
+          <li>
+            <b>打开开发者模式</b>
+            在页面右上角开启「开发者模式」开关。
+          </li>
+          <li>
+            <b>加载扩展目录</b>
+            点击「加载已解压的扩展程序」，选择 <span class="code-inline">TTranslate</span> 文件夹，然后把它固定到工具栏。
+          </li>
+          <li>
+            <b>开始翻译</b>
+            打开任意外语网页，点击工具栏图标，按「翻译」或按 <kbd>Alt</kbd> + <kbd>T</kbd>。
+          </li>
+          <li>
+            <b>或直接安装 .crx 包</b>
+            在 <a class="code-inline" href="https://gitcode.com/qq_23994787/TTranslate/releases/"
+              data-cfg-href="update.releasePageBase" target="_blank" rel="noopener">Release 页面</a>
+            下载最新的 .crx 文件，打开扩展管理页后将其拖入页面即可。
+          </li>
+        </ol>
+      </div>
+
+      <div class="panel reveal">
+        <h3>快捷键与入口</h3>
+        <div class="keyrow">
+          <kbd>Alt</kbd><span>+</span><kbd>T</kbd>
+          <span class="desc">翻译 / 还原当前页面</span>
+        </div>
+        <div class="keyrow">
+          <kbd>Alt</kbd><span>+</span><kbd>Shift</kbd><span>+</span><kbd>T</kbd>
+          <span class="desc">轮转切换显示模式</span>
+        </div>
+        <div class="keyrow">
+          <kbd>/</kbd>
+          <span class="desc">输入框内翻译当前内容</span>
+        </div>
+        <div class="keyrow">
+          <kbd>选中文字</kbd>
+          <span class="desc">选中文字进行划词翻译</span>
+        </div>
+        <div class="keyrow">
+          <kbd>Alt</kbd><span>+</span><kbd>点击</kbd>
+          <span class="desc">忽略或恢复该段翻译</span>
+        </div>
+        <div class="keyrow">
+          <kbd>Ctrl</kbd><span>+</span><kbd>Enter</kbd>
+          <span class="desc">普通翻译面板提交</span>
+        </div>
+        <div class="keyrow">
+          <kbd>📌</kbd>
+          <span class="desc">图钉固定面板为独立常驻窗口</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ FAQ ============================ -->
+<section class="block block-soft" id="faq">
+  <div class="wrap">
+    <div class="sec-head reveal">
+      <h2>常见问题</h2>
+    </div>
+
+    <div class="faq">
+      <details class="faq-item reveal">
+        <summary>打开网页后为什么没有自动翻译？</summary>
+        <div class="faq-body">
+          <p>默认策略是「不自动翻译」，避免在你不想翻译的页面上产生多余的请求。需要在设置里打开「自动翻译网页」，或每次点击翻译按钮 / 按 <kbd>Alt</kbd> + <kbd>T</kbd>。</p>
+        </div>
+      </details>
+
+      <details class="faq-item reveal">
+        <summary>用的是哪个翻译服务？需要 API Key 吗？</summary>
+        <div class="faq-body">
+          <p>当前插件默认接入 Bing 免费翻译（<span class="code-inline">edge.microsoft.com</span>），同时保留 Google 免费翻译、MyMemory、Lingva 与本地 LibreTranslate 作为可选项，均无需密钥。</p>
+        </div>
+      </details>
+
+      <details class="faq-item reveal">
+        <summary>点击翻译没有反应怎么办？</summary>
+        <div class="faq-body">
+          <p>扩展重载后，已打开的标签页不会自动重新注入内容脚本。请刷新页面，或在弹窗中手动点击一次翻译 —— 扩展会先手动注入脚本再执行。</p>
+          <p>如果仍然无响应，请确认扩展拥有该网站的访问权限，并查看扩展管理页中是否报错。</p>
+        </div>
+      </details>
+
+      <details class="faq-item reveal">
+        <summary>滚动加载的内容会一起翻译吗？</summary>
+        <div class="faq-body">
+          <p>会。扩展会主动监听新增节点与文本变化，对增量内容进行翻译处理，已翻译过的段落会放入本地缓存，不会重复请求。</p>
+        </div>
+      </details>
+
+      <details class="faq-item reveal">
+        <summary>翻译面板能否一直开着？</summary>
+        <div class="faq-body">
+          <p>浏览器原生弹窗的位置由浏览器控制，点击页面外就会关闭。点击面板右上角的图钉按钮，会打开一个贴紧屏幕右上角、高度铺满的独立常驻窗口，其中的「翻译 / 还原」仍然作用于原网页。</p>
+        </div>
+      </details>
+
+      <details class="faq-item reveal">
+        <summary>可以只显示译文、隐藏原文吗？</summary>
+        <div class="faq-body">
+          <p>可以。选择「原处替换」会把译文直接写回原文位置；「原处替换 + 悬停看原文」在替换的同时保留悬停查看原文的能力。再配合 8 种显示主题、字号、颜色与译文位置，可以按阅读习惯自由组合。</p>
+        </div>
+      </details>
+
+      <details class="faq-item reveal">
+        <summary>为什么有些专业名词没有被翻译？</summary>
+        <div class="faq-body">
+          <p>扩展默认开启「专有名词保护」，会把品牌与技术名词保留原文，避免直译（如把 Spring 译成「春季」），可以在设置中关闭或按您需求调整设置专有名词。</p>
+        </div>
+      </details>
+
+      <details class="faq-item reveal">
+        <summary>Alt + 点击段落没有反应？</summary>
+        <div class="faq-body">
+          <p>请确认网页翻译面板中的「启用 Alt + 点击忽略」已经打开。忽略状态按域名保存，再次 Alt + 点击同一段即可恢复翻译；刷新页面后依然有效。</p>
+        </div>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ CTA ============================ -->
+<section class="cta">
+  <div class="wrap inner">
+    <h2>让下一个外文网页，也能一眼读懂</h2>
+    <p>TTranslate 浏览器网页翻译扩展</p>
+    <div style="display:flex;gap:12px;justify-content:center;flex-wrap:wrap">
+      <a class="btn btn-white" href="https://gitcode.com/qq_23994787/TTranslate/releases/"
+         data-cfg-href="update.releasePageBase" target="_blank" rel="noopener">下载扩展 (.crx)</a>
+      <a class="btn btn-outline-light" href="#features">回看功能</a>
+    </div>
+  </div>
+</section>
+
+<!-- ============================ 页脚 ============================ -->
+<footer>
+  <div class="wrap">
+    <div class="foot-top">
+      <div class="foot-links">
+        <div class="foot-col">
+          <b>产品</b>
+          <a href="#features">核心功能</a>
+          <a href="#render">译文样式</a>
+          <a href="#how">工作原理</a>
+        </div>
+        <div class="foot-col">
+          <b>使用</b>
+          <a href="#install">安装步骤</a>
+          <a href="#faq">常见问题</a>
+        </div>
+        <div class="foot-col">
+          <b>说明</b>
+          <a href="#scenes">适用场景</a>
+          <a href="https://gitcode.com/qq_23994787/TTranslate" data-cfg-href="homepage"
+             target="_blank" rel="noopener">项目主页</a>
+          <a href="#top">回到顶部</a>
+        </div>
+      </div>
+    </div>
+    <div class="foot-bottom">
+      <span data-cfg="copyright">© 2026, 心歌</span>
+      <span><span>版本</span> <b data-cfg="version">0.1.x</b><span> · Manifest V3</span></span>
+    </div>
+  </div>
+</footer>
+
+<!-- ============================ 多语言词条（内嵌，避免额外请求） ============================ -->
+<script type="application/json" id="i18n-data">
+{
+    "meta.title": { "en": "TTranslate · Bilingual browser translation extension", "zh": "TTranslate · 双语对照浏览器翻译扩展" },
+    "nav.features": { "en": "Features", "zh": "核心功能" },
+    "nav.rendering": { "en": "Rendering", "zh": "译文样式" },
+    "nav.how": { "en": "How it works", "zh": "工作原理" },
+    "nav.scenes": { "en": "Use cases", "zh": "适用场景" },
+    "nav.getStarted": { "en": "Get started", "zh": "安装使用" },
+    "nav.faq": { "en": "FAQ", "zh": "常见问题" },
+    "nav.download": { "en": "Download (.crx)", "zh": "下载扩展 (.crx)" },
+    "hero.title": { "en": "Read every web page", "zh": "读懂每一个网页" },
+    "hero.titleAccent": { "en": "Original and translation, side by side", "zh": "原文与译文，同屏对照" },
+    "hero.sub1": { "en": "TTranslate is a lightweight browser translation extension: full-page bilingual reading with 8 display modes, instant selection translation, and typing", "zh": "TTranslate 是一款轻量的浏览器翻译扩展。整页双语对照、8 种显示模式、划词即译、输入框按" },
+    "hero.sub2": { "en": "inside any input to translate in place. One click restores the original — powered by Bing free translation, with term protection and local cache for a clean, effortless reading experience, no account or key required.", "zh": "直译，一键还原原文；默认接入 Bing 免费翻译，并内置专有名词保护与本地缓存，为您提供清爽便捷的外文网页阅读体验。" },
+    "hero.install": { "en": "Installation", "zh": "安装步骤" },
+    "hero.meta.cache": { "en": "Local cache, instant results", "zh": "本地缓存，译文秒回" },
+    "hero.meta.themes": { "en": "8 display modes · 8 themes", "zh": "8 种显示模式 · 8 种显示主题" },
+    "hero.meta.spa": { "en": "UI in Chinese or English", "zh": "中文 / English 界面" },
+    "mock.done": { "en": "Translation complete", "zh": "翻译完成" },
+    "mock.progress": { "en": "48 / 48 paragraphs", "zh": "48 / 48 段落" },
+    "mock.select": { "en": "Select to translate", "zh": "划词即译" },
+    "mock.selectHint": { "en": "Draggable · pinnable", "zh": "可拖拽 · 可固定" },
+    "stats.themesUnit": { "en": "", "zh": "种" },
+    "stats.modesUnit": { "en": "", "zh": "键" },
+    "stats.themes": { "en": "Display themes", "zh": "显示主题" },
+    "common.displayMode": { "en": "Display modes", "zh": "显示模式" },
+    "stats.entries": { "en": "Entry points", "zh": "翻译入口" },
+    "stats.restore": { "en": "Restore original", "zh": "还原原文" },
+    "features.title": { "en": "One extension, from full page to a single word", "zh": "一个扩展，从整页到单词" },
+    "features.desc": { "en": "Read a whole page, look up a word, translate inside an input, or paste text into the panel — translate exactly as much as you need.", "zh": "整页精读、划词查词、输入框直译、普通翻译面板 —— 需要多少，就翻译多少。" },
+    "features.card1.title": { "en": "Full-page translation, eight display modes", "zh": "整页翻译，八种显示模式" },
+    "features.card1.desc": { "en": "Bilingual, side-by-side, sentence interleaving, hover reveal, hover popover, click to reveal, in-place replacement, and in-place with the original on hover — switch anytime; navigation and breadcrumbs get compact inline translations.", "zh": "双语对照、左右对照、句级交错、悬停展开、悬停浮层、点击展开、原处替换、原处替换 + 悬停看原文，随时切换；导航与面包屑自动改用紧凑内联译文。" },
+    "features.card1.tag": { "en": "Alt+Shift+T cycles modes", "zh": "Alt+Shift+T 轮转切换" },
+    "features.style.title": { "en": "Style every translation", "zh": "译文样式随心调" },
+    "features.style.desc": { "en": "Eight display themes — plain text, dashed underline, solid emphasis, wavy underline, quote block, card shadow, frosted glass and marker — with adjustable colour, font size and position.", "zh": "纯文本、虚线下划线、实线强调、波浪下划线、引用块、卡片投影、半透明毛玻璃、荧光笔 8 种显示主题，颜色、字号、译文位置都可调。" },
+    "features.style.tag": { "en": "8 themes · custom colours", "zh": "8 主题 · 支持自定义颜色" },
+    "features.card2.title": { "en": "Three-state button with live progress", "zh": "三态按钮与实时进度" },
+    "features.card2.desc": { "en": "“Translate” → “Translating 12/48” → “Restore”. Progress is always visible, and cancelling, going offline or stalling all end cleanly. MutationObserver plus SPA route hooks keep newly loaded content translated — no second click.", "zh": "「翻译」→「翻译中 12/48」→「还原」，进度实时可见；取消、断网、卡住都有收尾兜底。MutationObserver 加 SPA 路由监听，滚动加载、切换页面后新出现的内容自动补齐译文。" },
+    "features.card2.tag": { "en": "Alt+T toggle · live tracking", "zh": "Alt+T 一键切换 · 动态跟随" },
+    "features.card3.title": { "en": "Selection translation", "zh": "划词翻译" },
+    "features.card3.desc": { "en": "Select any text to translate — either straight into a popover or behind a small T icon. The panel can be dragged and pinned, the source stays editable, the language pair is adjustable, and results copy in one click.", "zh": "选中任意文字即可翻译，可选「直接显示浮层」或「先显示 T 图标」；面板可拖拽、可图钉固定，原文可改写重译，语言对随手切换，译文一键复制。" },
+    "features.card3.tag": { "en": "Direct / icon modes", "zh": "direct / icon 两种模式" },
+    "features.card4.title": { "en": "Translate inside inputs", "zh": "输入框翻译" },
+    "features.card4.desc1": { "en": "Type", "zh": "在任意 input、textarea 或富文本编辑器中敲" },
+    "features.card4.desc2": { "en": "in any input, textarea or rich-text editor to replace the content with a translation — finish that email without switching windows.", "zh": "，当前内容就地替换为译文，写完邮件不用切窗口。" },
+    "features.card4.tag": { "en": "Works in contenteditable too", "zh": "contenteditable 同样生效" },
+    "features.card5.title": { "en": "Phonetics and native audio", "zh": "单词音标与语音朗读" },
+    "features.card5.desc": { "en": "Translating a single English word adds UK / US phonetics and a play button, from Youdao with Free Dictionary as fallback — shared by selection and the text panel.", "zh": "翻译单个英文单词时自动附上英式 / 美式音标与发音按钮，有道优先、Free Dictionary 兜底，划词与普通翻译共用。" },
+    "features.card5.tag": { "en": "Words only — sentences stay clean", "zh": "只对单词生效，不打扰句子" },
+    "features.card7.title": { "en": "Term protection", "zh": "专有名词保护" },
+    "features.card7.desc": { "en": "Ten built-in domain glossaries plus custom keywords keep brand and technical terms in their original form, avoiding literal translation.", "zh": "内置10 套领域词库，可自定义关键词，让品牌与技术名词保持原文，避免直译。" },
+    "features.card7.tag": { "en": "Longest match first · swap templates anytime", "zh": "长词优先 · 模板随切随用" },
+    "features.card8.title": { "en": "Ignore by paragraph", "zh": "按段落忽略" },
+    "features.card8.desc1": { "en": "+ click any paragraph to skip its translation, and", "zh": "+ 点击任意段落即可忽略该段翻译，再次" },
+    "features.card8.desc2": { "en": "+ click it again to bring it back. Ignored paragraphs are remembered per site.", "zh": "+ 点击同一段即可恢复；忽略状态按域名保存，刷新后依然有效。" },
+    "features.card8.tag": { "en": "Alt + click · remembered per site", "zh": "Alt + 点击 · 按站点记忆" },
+    "features.card9.title": { "en": "Interface themes and languages", "zh": "界面主题与多语言" },
+    "features.card9.desc": { "en": "Ten interface themes (light, dark and eight colours); the custom theme supports a local background image, opacity and text colour. The UI switches between Chinese and English instantly.", "zh": "10 套界面主题（亮色、暗色与 8 种配色）可选，自定义主题支持本地背景图、透明度和文字颜色；界面支持中文 / English 即时切换。" },
+    "features.card9.tag": { "en": "Settings and popover share the same skin", "zh": "设置与划词浮层同步换肤" },
+    "render.title": { "en": "You decide how translations look", "zh": "译文怎么排，由你决定" },
+    "render.desc": { "en": "Toggle the options to preview display modes and themes live. In hover mode, move the pointer over a paragraph to reveal its translation.", "zh": "切换下面的选项，实时预览显示模式与显示主题的组合效果；「悬停展开」模式下把鼠标移到段落上即可看到译文。" },
+    "render.group.theme": { "en": "Theme", "zh": "显示主题" },
+    "render.group.position": { "en": "Position", "zh": "译文位置" },
+    "render.mode.dual": { "en": "Bilingual", "zh": "双语对照" },
+    "render.mode.replace": { "en": "In-place", "zh": "原处替换" },
+    "render.mode.hover": { "en": "Hover reveal", "zh": "悬停展开" },
+    "render.mode.sideBySide": { "en": "Side by side", "zh": "左右对照" },
+    "render.theme.none": { "en": "Plain text", "zh": "纯文本" },
+    "render.theme.dashed": { "en": "Dashed", "zh": "虚线下划线" },
+    "render.theme.solid": { "en": "Solid emphasis", "zh": "实线强调" },
+    "render.theme.wavy": { "en": "Wavy underline", "zh": "波浪下划线" },
+    "render.theme.quote": { "en": "Quote block", "zh": "引用块" },
+    "render.theme.card": { "en": "Card shadow", "zh": "卡片投影" },
+    "render.theme.glass": { "en": "Frosted glass", "zh": "毛玻璃" },
+    "render.theme.marker": { "en": "Marker", "zh": "荧光笔" },
+    "render.pos.after": { "en": "Below original", "zh": "原文之后" },
+    "render.pos.before": { "en": "Above original", "zh": "原文之前" },
+    "how.title": { "en": "Four steps to translate a page", "zh": "四步走完一次整页翻译" },
+    "how.desc": { "en": "From finding the text worth translating to putting it back in place — every step is explainable and debuggable.", "zh": "从找到该翻译的文本，到把译文稳稳地放回原位，每一步都可解释、可调试。" },
+    "how.step1.title": { "en": "Guarded loading", "zh": "加载引擎" },
+    "how.step1.desc": { "en": "Each page is screened first — ad hosts and challenge pages are skipped — then the translation engine is loaded dynamically.", "zh": "访客打开网页时先做安全检查，跳过广告域名与验证页，再动态加载翻译引擎" },
+    "how.step2.title": { "en": "Smart extraction", "zh": "智能取段" },
+    "how.step2.desc": { "en": "Text nodes are collected, scripts, code and non-translatable regions skipped, then merged into paragraphs by block ancestor; navigation areas are detected separately.", "zh": "遍历文本节点，排除脚本、代码与不翻译区域，按块级祖先合并成段落，并单独识别导航区域" },
+    "how.step3.title": { "en": "Batch translation", "zh": "批量翻译" },
+    "how.step3.desc": { "en": "Requests go through the background, batched and rate-limited per service, with long paragraphs split, retries added, terms protected by placeholders and results cached locally.", "zh": "后台统一出网，按服务限制合批并发、超长段落自动切块并带重试；专有名词先占位，结果写入本地缓存" },
+    "how.step4.title": { "en": "In-place rendering", "zh": "原位渲染" },
+    "how.step4.desc": { "en": "Block or inline wrappers are generated per display mode, with compatible rendering for tables, cards and banners.", "zh": "按显示模式生成块级或行内译文，并针对表格、卡片、横幅等特殊布局做兼容渲染" },
+    "scenes.title": { "en": "Turn foreign pages into readable study material", "zh": "把外语网页变成可读的学习资料" },
+    "scenes.desc": { "en": "From unfamiliar languages to making understanding nearly effortless.", "zh": "从陌生的语言，到把「看懂」这一步的成本降到最低。" },
+    "scenes.1.title": { "en": "Papers and documentation", "zh": "论文与文档研读" },
+    "scenes.1.desc": { "en": "Read English docs and papers side by side; terminology stays visible, formulas and code blocks remain untouched.", "zh": "英文技术文档、论文页面双语对照阅读，专业术语保持原文，公式与代码块原样保留。" },
+    "scenes.1.tip": { "en": "Suggested: side-by-side + dashed underline", "zh": "推荐：左右对照 + 虚线下划线" },
+    "scenes.2.title": { "en": "Development and debugging", "zh": "开发与排查问题" },
+    "scenes.2.desc": { "en": "Skim GitHub issues and Stack Overflow, look up an unfamiliar word on the way without losing your thread.", "zh": "在 GitHub Issue、Stack Overflow 里快速扫读，划词翻译顺手查生词，不打断当前思路。" },
+    "scenes.2.tip": { "en": "Suggested: selection translation + icon mode", "zh": "推荐：划词翻译 + 图标模式" },
+    "scenes.3.title": { "en": "Writing and email", "zh": "写作与邮件回复" },
+    "scenes.3.desc1": { "en": "Draft in Chinese, then type", "zh": "在编辑器里写完中文，敲一个" },
+    "scenes.3.desc2": { "en": "to swap it for English in place — and copy the result straight out.", "zh": "就地换成英文；译文结果还能直接复制走。" },
+    "scenes.3.tip": { "en": "Suggested: input translation + text panel", "zh": "推荐：输入框翻译 + 普通翻译面板" },
+    "install.title": { "en": "Install in three steps, start using it in a minute", "zh": "三步安装，一分钟后开始使用" },
+    "install.step1.title": { "en": "Open the extensions page", "zh": "打开扩展管理页" },
+    "install.step1.desc1": { "en": "Enter", "zh": "在地址栏输入" },
+    "install.step1.desc2": { "en": "(Edge:", "zh": "（Edge 为" },
+    "install.step1.desc3": { "en": ").", "zh": "）。" },
+    "install.step2.title": { "en": "Turn on developer mode", "zh": "打开开发者模式" },
+    "install.step2.desc": { "en": "Switch on “Developer mode” in the top right corner.", "zh": "在页面右上角开启「开发者模式」开关。" },
+    "install.step3.title": { "en": "Load the extension folder", "zh": "加载扩展目录" },
+    "install.step3.desc1": { "en": "Click “Load unpacked”, choose the", "zh": "点击「加载已解压的扩展程序」，选择" },
+    "install.step3.desc2": { "en": "folder, then pin it to the toolbar.", "zh": "文件夹，然后把它固定到工具栏。" },
+    "install.step4.title": { "en": "Start translating", "zh": "开始翻译" },
+    "install.step4.desc1": { "en": "Open any foreign page, click the toolbar icon and hit “Translate”, or press", "zh": "打开任意外语网页，点击工具栏图标，按「翻译」或按" },
+    "install.step5.title": { "en": "Or install the .crx directly", "zh": "或直接安装 .crx 包" },
+    "install.step5.desc1": { "en": "Get the latest .crx from the", "zh": "在" },
+    "install.step5.desc2": { "en": "Releases page", "zh": "Release 页面" },
+    "install.step5.desc3": { "en": "and drag it into the extensions page.", "zh": "下载最新的 .crx 文件，打开扩展管理页后将其拖入页面即可。" },
+    "install.shortcuts": { "en": "Shortcuts and entry points", "zh": "快捷键与入口" },
+    "install.key.page": { "en": "Translate / restore this page", "zh": "翻译 / 还原当前页面" },
+    "install.key.modeCycle": { "en": "Cycle display modes", "zh": "轮转切换显示模式" },
+    "install.key.input": { "en": "Translate the content of an input", "zh": "输入框内翻译当前内容" },
+    "install.key.ignore": { "en": "Ignore or restore this paragraph", "zh": "忽略或恢复该段翻译" },
+    "install.key.click": { "en": "Click", "zh": "点击" },
+    "install.key.select": { "en": "Select text", "zh": "选中文字" },
+    "install.key.selectDesc": { "en": "Select text to translate instantly", "zh": "选中文字进行划词翻译" },
+    "install.key.panel": { "en": "Submit from the text panel", "zh": "普通翻译面板提交" },
+    "install.key.pin": { "en": "Pin the panel as a standalone window", "zh": "图钉固定面板为独立常驻窗口" },
+    "faq.q1": { "en": "Why isn’t a page translated automatically?", "zh": "打开网页后为什么没有自动翻译？" },
+    "faq.a1a": { "en": "The default is “don’t auto-translate”, so pages you don’t care about send no requests. Turn on “Auto-translate pages” in settings, or click Translate / press", "zh": "默认策略是「不自动翻译」，避免在你不想翻译的页面上产生多余的请求。需要在设置里打开「自动翻译网页」，或每次点击翻译按钮 / 按" },
+    "faq.a1suffix": { "en": " each time.", "zh": "。" },
+    "faq.q2": { "en": "Which translation service is used? Do I need an API key?", "zh": "用的是哪个翻译服务？需要 API Key 吗？" },
+    "faq.a2a": { "en": "The extension defaults to Bing free translation (", "zh": "当前插件默认接入 Bing 免费翻译（" },
+    "faq.a2b": { "en": "), with Google free, MyMemory, Lingva and a local LibreTranslate available as options — none of them need a key.", "zh": "），同时保留 Google 免费翻译、MyMemory、Lingva 与本地 LibreTranslate 作为可选项，均无需密钥。" },
+    "faq.q3": { "en": "What if clicking Translate does nothing?", "zh": "点击翻译没有反应怎么办？" },
+    "faq.a3a": { "en": "After reloading the extension, already-open tabs don’t get the content script again. Refresh the page, or click Translate once in the popup — the script is injected first.", "zh": "扩展重载后，已打开的标签页不会自动重新注入内容脚本。请刷新页面，或在弹窗中手动点击一次翻译 —— 扩展会先手动注入脚本再执行。" },
+    "faq.a3b": { "en": "If it still doesn’t respond, check that the extension has access to this site and look for errors on the extensions page.", "zh": "如果仍然无响应，请确认扩展拥有该网站的访问权限，并查看扩展管理页中是否报错。" },
+    "faq.q4": { "en": "Is content loaded while scrolling translated too?", "zh": "滚动加载的内容会一起翻译吗？" },
+    "faq.a4": { "en": "Yes. The extension actively watches added nodes and text changes and translates incremental content; translated paragraphs are stored in a local cache, so nothing is requested twice.", "zh": "会。扩展会主动监听新增节点与文本变化，对增量内容进行翻译处理，已翻译过的段落会放入本地缓存，不会重复请求。" },
+    "faq.q5": { "en": "Can the translation panel stay open?", "zh": "翻译面板能否一直开着？" },
+    "faq.a5": { "en": "The native popup is positioned and closed by the browser. Click the pin button in its top-right corner to open a standalone window docked to the top-right of the screen, full height — its Translate / Restore still controls the original page.", "zh": "浏览器原生弹窗的位置由浏览器控制，点击页面外就会关闭。点击面板右上角的图钉按钮，会打开一个贴紧屏幕右上角、高度铺满的独立常驻窗口，其中的「翻译 / 还原」仍然作用于原网页。" },
+    "faq.q6": { "en": "Can I hide the original and keep only the translation?", "zh": "可以只显示译文、隐藏原文吗？" },
+    "faq.a6": { "en": "Yes. “In-place” writes the translation directly where the original was; “in-place with original on hover” keeps the original available on hover. Combine that with 8 themes, font size, colour and position to match your reading habits.", "zh": "可以。选择「原处替换」会把译文直接写回原文位置；「原处替换 + 悬停看原文」在替换的同时保留悬停查看原文的能力。再配合 8 种显示主题、字号、颜色与译文位置，可以按阅读习惯自由组合。" },
+    "faq.q7": { "en": "Why are some technical terms left untranslated?", "zh": "为什么有些专业名词没有被翻译？" },
+    "faq.a7": { "en": "Term protection is on by default, keeping brands and technical terms as they are and avoiding literal translation (like Spring turning into “spring”). You can turn it off or adjust term protection settings to your needs.", "zh": "扩展默认开启「专有名词保护」，会把品牌与技术名词保留原文，避免直译（如把 Spring 译成「春季」），可以在设置中关闭或按您需求调整设置专有名词。" },
+    "faq.q8": { "en": "Alt + click on a paragraph does nothing?", "zh": "Alt + 点击段落没有反应？" },
+    "faq.a8": { "en": "Make sure “Enable Alt + click to ignore” is on in the page translation panel. Ignored paragraphs are stored per site, and Alt + clicking the same paragraph again restores its translation — even after a refresh.", "zh": "请确认网页翻译面板中的「启用 Alt + 点击忽略」已经打开。忽略状态按域名保存，再次 Alt + 点击同一段即可恢复翻译；刷新页面后依然有效。" },
+    "cta.title": { "en": "Make the next foreign page readable at a glance", "zh": "让下一个外文网页，也能一眼读懂" },
+    "cta.sub": { "en": "TTranslate — a browser extension for translating web pages", "zh": "TTranslate 浏览器网页翻译扩展" },
+    "cta.review": { "en": "Review features", "zh": "回看功能" },
+    "footer.product": { "en": "Product", "zh": "产品" },
+    "footer.usage": { "en": "Usage", "zh": "使用" },
+    "footer.about": { "en": "About", "zh": "说明" },
+    "footer.home": { "en": "Project home", "zh": "项目主页" },
+    "footer.top": { "en": "Back to top", "zh": "回到顶部" },
+    "footer.version": { "en": "Version", "zh": "版本" },
+    "footer.pin": { "en": "Pin", "zh": "图钉" }
+}
+</script>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ============================================================
+     多语言：内嵌词条 + i18n(key, lang)
+     ------------------------------------------------------------
+     词条内嵌在页面顶部的 #i18n-data 中（type="application/json" 的脚本标签）：
+       { "key": { "en": "...", "zh": "..." } }
+     key 统一使用英文语义键（如 features.card1.title）。
+     页面以中文为原文，脚本收集文本节点后按「中文原文 → key」反查，
+     再调用 i18n(key, lang) 取值，因此不必给每个节点挂 data-i18n，
+     也能保留 <kbd>、<b> 等内联标签。
+     ============================================================ */
+  var I18N = {};        // { zh: { key: value }, en: { key: value } }
+  var ZH_TO_KEY = {};   // 归一化中文原文 → key
+  var currentLang = 'zh';
+  var textNodes = [];
+  var titleNodes = [];
+  var SKIP = /^(SCRIPT|STYLE|NOSCRIPT|TEXTAREA)$/;
+
+  /** 取词条，例如 i18n('features.title', 'en')；缺失时返回 null */
+  function i18n(key, lang) {
+    var table = I18N[lang] || I18N.zh || {};
+    return Object.prototype.hasOwnProperty.call(table, key) ? table[key] : null;
+  }
+  window.i18n = i18n;
+
+  function normalize(raw) {
+    return raw.replace(/\s+/g, ' ').trim();
+  }
+
+  /** 把词条摊平成「语言 → key → value」，并建立中文反查表 */
+  function buildDict(json) {
+    I18N.zh = {};
+    I18N.en = {};
+    ZH_TO_KEY = {};
+    Object.keys(json || {}).forEach(function (key) {
+      var entry = json[key] || {};
+      if (typeof entry.zh === 'string') {
+        I18N.zh[key] = entry.zh;
+        ZH_TO_KEY[normalize(entry.zh)] = key;
+      }
+      if (typeof entry.en === 'string') I18N.en[key] = entry.en;
+    });
+  }
+
+  function collectNodes() {
+    var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+      acceptNode: function (node) {
+        if (!node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+        if (!node.parentNode || SKIP.test(node.parentNode.nodeName)) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      }
+    });
+    var node;
+    while ((node = walker.nextNode())) {
+      var raw = node.nodeValue;
+      var m = raw.match(/^(\s*)([\s\S]*?)(\s*)$/);
+      var key = ZH_TO_KEY[normalize(m[2])];
+      if (!key) continue;
+      textNodes.push({ node: node, lead: m[1], tail: m[3], raw: raw, key: key });
+    }
+
+    document.querySelectorAll('[title]').forEach(function (el) {
+      var raw = el.getAttribute('title');
+      var key = ZH_TO_KEY[normalize(raw)];
+      if (!key) return;
+      titleNodes.push({ el: el, raw: raw, key: key });
+    });
+  }
+
+  function applyLang(lang) {
+    currentLang = lang;
+    var isEn = lang === 'en';
+
+    textNodes.forEach(function (t) {
+      var value = isEn ? i18n(t.key, lang) : null;
+      t.node.nodeValue = value != null ? t.lead + value + t.tail : t.raw;
+    });
+    titleNodes.forEach(function (t) {
+      var value = isEn ? i18n(t.key, lang) : null;
+      t.el.setAttribute('title', value != null ? value : t.raw);
+    });
+
+    document.documentElement.lang = isEn ? 'en' : 'zh-CN';
+    var pageTitle = i18n('meta.title', lang);
+    if (pageTitle) document.title = pageTitle;
+
+    document.querySelectorAll('.lang-btn').forEach(function (btn) {
+      btn.setAttribute('aria-pressed', String(btn.getAttribute('data-lang') === lang));
+    });
+  }
+
+  document.querySelectorAll('.lang-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var lang = btn.getAttribute('data-lang');
+      if (lang === currentLang) return;
+      applyLang(lang);
+      // 只有用户手动切换才记住选择，否则继续跟随浏览器语言
+      try { localStorage.setItem('tt-lang', lang); } catch (e) { /* 隐私模式忽略 */ }
+    });
+  });
+
+  /* ============================================================
+     亮色 / 暗色主题切换（右上角按钮，默认亮色）
+     ============================================================ */
+  (function initThemeToggle() {
+    var btn = document.getElementById('theme-toggle');
+    if (!btn) return;
+    btn.addEventListener('click', function () {
+      var dark = document.documentElement.getAttribute('data-theme') === 'dark';
+      if (dark) {
+        document.documentElement.removeAttribute('data-theme');
+        try { localStorage.setItem('tt-docs-theme', 'light'); } catch (e) { /* ignore */ }
+      } else {
+        document.documentElement.setAttribute('data-theme', 'dark');
+        try { localStorage.setItem('tt-docs-theme', 'dark'); } catch (e) { /* ignore */ }
+      }
+    });
+  })();
+
+  // 词条内嵌于 #i18n-data，无需额外请求，file:// 直接打开也能切换语言
+  (function initLang() {
+    var holder = document.getElementById('i18n-data');
+    if (!holder) return;
+    buildDict(JSON.parse(holder.textContent));
+    collectNodes();
+    // 首次加载：优先 localStorage 中用户的选择，其次跟随浏览器语言
+    var saved = null;
+    try { saved = localStorage.getItem('tt-lang'); } catch (e) { /* ignore */ }
+    var auto = String(navigator.language || 'zh').toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en';
+    applyLang(saved === 'zh' || saved === 'en' ? saved : auto);
+  })();
+
+  /* ============================================================
+     读取 app.config.json（版本号、下载地址、版权等）
+     ============================================================ */
+  (function loadConfig() {
+    function pick(obj, path) {
+      return path.split('.').reduce(function (o, k) {
+        return o && o[k] != null ? o[k] : null;
+      }, obj);
+    }
+
+    fetch('app.config.json', { cache: 'no-store' })
+      .then(function (res) {
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return res.json();
+      })
+      .then(function (cfg) {
+        document.querySelectorAll('[data-cfg]').forEach(function (el) {
+          var value = pick(cfg, el.getAttribute('data-cfg'));
+          if (value) el.textContent = value;
+        });
+        document.querySelectorAll('[data-cfg-href]').forEach(function (el) {
+          var value = pick(cfg, el.getAttribute('data-cfg-href'));
+          if (value) el.setAttribute('href', value);
+        });
+      })
+      .catch(function () {
+        // file:// 直接打开或配置缺失时，沿用 HTML 内的默认值（版本号、Release 地址）
+      });
+  })();
+
+  /* ---------- 导航滚动阴影 ---------- */
+  var nav = document.getElementById('nav');
+  function onScroll() {
+    if (window.scrollY > 8) nav.classList.add('is-scrolled');
+    else nav.classList.remove('is-scrolled');
+  }
+  window.addEventListener('scroll', onScroll, { passive: true });
+  onScroll();
+
+  /* ---------- 渲染演示：选项切换 ---------- */
+  var demoBody = document.getElementById('demo-body');
+  var groups = [
+    { id: 'chips-mode', attr: 'mode' },
+    { id: 'chips-theme', attr: 'theme' },
+    { id: 'chips-pos', attr: 'pos' }
+  ];
+
+  groups.forEach(function (g) {
+    var wrap = document.getElementById(g.id);
+    if (!wrap) return;
+    wrap.addEventListener('click', function (e) {
+      var btn = e.target.closest('.chip');
+      if (!btn) return;
+      wrap.querySelectorAll('.chip').forEach(function (c) {
+        c.setAttribute('aria-pressed', String(c === btn));
+      });
+      demoBody.setAttribute('data-' + g.attr, btn.dataset.value);
+    });
+  });
+
+  /* ---------- 滚动出现动画 ---------- */
+  var items = document.querySelectorAll('.reveal');
+  if (!('IntersectionObserver' in window)) {
+    items.forEach(function (el) { el.classList.add('in'); });
+    return;
+  }
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (!entry.isIntersecting) return;
+      entry.target.classList.add('in');
+      io.unobserve(entry.target);
+    });
+  }, { threshold: 0.12, rootMargin: '0px 0px -40px 0px' });
+
+  items.forEach(function (el, i) {
+    // 同一区块内做轻微错峰
+    el.style.transitionDelay = Math.min(i % 3, 2) * 70 + 'ms';
+    io.observe(el);
+  });
+})();
+</script>
+</body>
+</html>

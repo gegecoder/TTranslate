@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "TTranslate",
+  "version": "1.0.0",
+  "description": "浏览器翻译扩展",
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>", "file:///*"],
+      "js": ["content/guard.js"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "content/*.mjs",
+        "content/*.js",
+        "shared/*.mjs",
+        "icons/*.png"
+      ],
+      "matches": ["<all_urls>", "file:///*"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup/popup.html",
+    "default_title": "TTranslate"
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "permissions": ["storage", "activeTab", "contextMenus", "sidePanel", "scripting", "clipboardWrite"],
+  "host_permissions": ["<all_urls>"],
+  "side_panel": {
+    "default_path": "popup/popup.html"
+  },
+  "commands": {
+    "toggleTranslatePage": {
+      "suggested_key": { "default": "Alt+T" },
+      "description": "切换当前页面翻译"
+    }
+  }
+}

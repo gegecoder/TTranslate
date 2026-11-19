@@ -1,0 +1,12 @@
+{
+  "name": "ttranslate-build",
+  "private": true,
+  "type": "module",
+  "description": "TTranslate 扩展构建工具",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "esbuild": "^0.24.0"
+  }
+}
