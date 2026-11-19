@@ -8,31 +8,35 @@
  */
 
 import { MARK, log } from '../shared/constants.mjs';
-import { getBlockAncestor, isTranslatable, looksCJK } from '../shared/utils.mjs';
+import { BLOCK_TAGS, getBlockAncestor, isTranslatable, looksCJK } from '../shared/utils.mjs';
 
 /**
+ * BLOCK_TAGS 的权威定义已迁移到 utils.mjs，这里直接复用。
+ * 注释保留在此（两处语义块级标签的一致说明）：
  * 无论 CSS display 是什么，都当作"段落边界"的标签。
  * 典型场景：导航菜单用 `li { display: inline-block }`，
  * 如果只看 display，整排菜单会被合并成一个巨大段落，
  * 或者干脆因为被当成行内而无法单独成段——表现为"菜单项没被翻译"。
  */
-const BLOCK_TAGS = new Set([
-  'P', 'LI', 'DT', 'DD', 'TD', 'TH', 'BUTTON', 'BLOCKQUOTE',
-  'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'ADDRESS',
-]);
 
 /** 导航类容器：这些区域里的短文本（单词/两三字符）也应该翻译 */
-const NAV_LIKE = 'a, li, nav, header, footer, button, aside, h1, h2, h3, h4, h5, h6';
+const NAV_LIKE = 'a, li, dt, dd, nav, header, footer, button, aside, h1, h2, h3, h4, h5, h6';
 
 /**
  * 导航/侧栏/面包屑区域：渲染译文时要用"紧凑内联"样式，
  * 而不是块级译文卡片——否则会把导航栏撑高、把面包屑挤乱。
+ * 在顶部工具栏（topbar/searchbar/pageHeader）里的段落也统一按导航紧凑样式处理，
+ * 避免按钮/操作链接被撑出块级卡片导致顶部布局错乱。
  */
 const NAV_SCOPE = [
-  'nav', 'header', 'footer', 'aside', '[role="navigation"]',
+  'nav', 'header', 'footer', 'aside',
+  '[role="navigation"]',
   '[aria-label*="readcrumb" i]', '[class*="breadcrumb" i]',
   '[class*="sidebar" i]', '[class*="menu" i]', '[class*="toc" i]',
-  '[class*="nav" i]',
+  '[class*="nav" i]', '[class*="navbar" i]',
+  '[class*="topbar" i]', '[class*="top-bar" i]',
+  '[class*="searchbar" i]', '[class*="search-bar" i]',
+  '[class*="page-header" i]', '[class*="pageHeader" i]',
 ].join(',');
 
 const blockIds = new WeakMap();
@@ -117,6 +121,14 @@ function isBlockElement(el, rule) {
       const pd = getComputedStyle(parent).display;
       if (pd.includes('flex') || pd.includes('grid')) return true;
     }
+    // 自身 display 非 inline（inline-block / inline-flex / block / flex / grid）
+    // 也视为独立块：搜索栏/工具栏里的操作链接常被写成 inline-block，
+    // 多个相邻 <a> 会共享父级块祖先被合并成一段，导致翻译后兄弟元素互相污染
+    // （百度百科顶部 intlBtn + helpBtn 被串译成一个 <a>）。
+    // 正文里默认 inline 的 <a>（如《论语·阳货》里的书名号链接）仍和周围文本合并，
+    // 保持句级翻译连贯。
+    const selfD = getComputedStyle(el).display;
+    if (selfD !== 'inline') return true;
   }
   const cs = getComputedStyle(el);
   const d = cs.display;

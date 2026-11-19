@@ -85,12 +85,48 @@ export { log } from './constants.mjs';
 /** display 值缓存：收集阶段同一元素的 computed display 不会变，避免重复触发样式重算 */
 const displayCache = new WeakMap();
 
-/** 获取元素相对于 body 的「块级祖先」——用于段落根 */
+/**
+ * 语义块级标签：即使 computed display 是 inline-block
+ * （button 默认 inline-block，<li> 也常被写成 inline-block），
+ * 它们仍然应该作为段落分组的根。
+ * walker.mjs 的 BLOCK_TAGS 从此处导出，两处保持同一份权威定义。
+ */
+export const BLOCK_TAGS = new Set([
+  'P', 'LI', 'DT', 'DD', 'TD', 'TH', 'BUTTON', 'BLOCKQUOTE',
+  'H1', 'H2', 'H3', 'H4', 'H5', 'H6', 'ADDRESS',
+]);
+
+/** 把 display 视为块级的 A 标签（nav/flex 菜单里的 inline-block / block / flex / grid） */
+function isAnchorIndependent(a) {
+  if (a.tagName !== 'A') return false;
+  try {
+    const d = displayCache.get(a) ?? getComputedStyle(a).display;
+    displayCache.set(a, d);
+    return d !== 'inline';
+  } catch { return false; }
+}
+
+/**
+ * 获取元素相对于 container 的「块级祖先」——用于段落根。
+ *
+ * 两段式判断：
+ *  1) 语义块级标签（button 默认 inline-block / h1~h6 / li / dt / dd ...）
+ *     → 直接返回自身，作为段落根
+ *  2) <A> 且 display !== inline（导航菜单 / 工具栏操作链接等 inline-block / block / flex / grid）
+ *     → 也返回自身，防止多个相邻链接被合并成一段
+ *  3) 其他：按 computed display 往上爬升，inline/inline-block/inline-flex/none 跳过
+ *
+ * 背景：百度百科搜索栏的 button 默认就是 inline-block，旧版只看 display 会把
+ * lemmaBtn + siteBtn + intlBtn + helpBtn 全部爬到同一个 block 祖先、合并成一段，
+ * 译文串写导致后三个按钮被清空（fixedWrapper 滚动条同样受影响）。
+ */
 export function getBlockAncestor(el, container) {
   let cur = el;
   while (cur && cur !== container) {
     if (cur.nodeType === 1) {
-      // 先查缓存，未命中才走 getComputedStyle（强制样式重算，是 collect 阶段瓶颈）
+      if (BLOCK_TAGS.has(cur.tagName)) return cur;
+      if (isAnchorIndependent(cur)) return cur;
+
       let d = displayCache.get(cur);
       if (d === undefined) {
         d = getComputedStyle(cur).display;

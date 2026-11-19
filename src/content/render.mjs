@@ -10,6 +10,7 @@
  */
 
 import { MARK, log } from '../shared/constants.mjs';
+import { BLOCK_TAGS } from '../shared/utils.mjs';
 
 /**
  * 这些标签内部插入 div/span 属于非法 HTML（浏览器会把节点甩出表格渲染，
@@ -344,6 +345,27 @@ function renderReplaceInPlace(para, translation, state) {
   para.blockEl.__tmtOrigText = para.text;
   state.replaceActive = true;
   para.targetWrapper = null;
+
+  // ---- 导航/固定宽度容器的溢出保护 ----
+  // 百度百科蓝色导航每个 dl 有 width:94-126px，中文 2 字塞下，
+  // 英文译文长 2-3 倍会直接溢出、撑破导航栏布局。
+  // 只对 BLOCK_TAGS 里的语义块级标签（dt/dd/button/li/h1-h6）加约束：
+  // 它们天然有父容器的固定宽度限制；div 这类布局容器（如下拉菜单里的
+  // navBarItem）宽度自适应，加 ellipsis 反而会误截断下拉子项。
+  if (para.isNav && BLOCK_TAGS.has(para.blockEl.tagName)) {
+    const el = para.blockEl;
+    if (el.nodeType === 1) {
+      // 保存原始 inline style 的 3 个属性，restore 时精确还原
+      el.__tmtNavStyle = {
+        overflow: el.style.overflow || '',
+        whiteSpace: el.style.whiteSpace || '',
+        textOverflow: el.style.textOverflow || '',
+      };
+      el.style.overflow = 'hidden';
+      el.style.whiteSpace = 'nowrap';
+      el.style.textOverflow = 'ellipsis';
+    }
+  }
 }
 
 /**

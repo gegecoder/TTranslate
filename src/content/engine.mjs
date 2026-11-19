@@ -698,6 +698,14 @@ function restoreReplacedText() {
         delete n.__tmtReplaced;
       }
     }
+    // 导航/固定宽度容器的溢出约束还原（renderReplaceInPlace 加的 nowrap/ellipsis/hidden）
+    const el = para.blockEl;
+    if (el?.__tmtNavStyle) {
+      el.style.overflow = el.__tmtNavStyle.overflow;
+      el.style.whiteSpace = el.__tmtNavStyle.whiteSpace;
+      el.style.textOverflow = el.__tmtNavStyle.textOverflow;
+      delete el.__tmtNavStyle;
+    }
     para.targetWrapper = null;
   }
   state.replaceActive = false;
