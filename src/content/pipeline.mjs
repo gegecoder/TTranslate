@@ -54,6 +54,17 @@ export class Pipeline {
     return this.queue.length === 0 && this.inFlight === 0;
   }
 
+  /**
+   * 丢弃排队中的任务（语言切换等场景：旧语言的任务和结果都不再需要）。
+   * 在途请求无法中断，其返回值由 engine 按"收集代次"过滤掉。
+   */
+  reset() {
+    if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+    this.queue = [];
+    this.inQueue.clear();
+    this.cacheHit.clear();
+  }
+
   /** 入队一个段落。队列非空时会自动启动定时器 */
   enqueue(para) {
     // 缓存键用「文本 hash」而不是段落 id：

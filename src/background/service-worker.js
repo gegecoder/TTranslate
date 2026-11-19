@@ -54,6 +54,11 @@ register(MSG.UPDATE_CONFIG, async (patch) => {
   broadcastToContent(MSG.SET_SERVICE, { service: merged.service });
   broadcastToContent(MSG.SET_TRANSLATION_MODE, { mode: merged.translationMode });
   broadcastToContent(MSG.SET_POSITION, { position: merged.translationPosition });
+  // 语言对变更：content 的 state.config 必须同步，否则下次点击翻译仍用旧语言
+  broadcastToContent(MSG.SET_LANGUAGE, {
+    sourceLanguage: merged.sourceLanguage,
+    targetLanguage: merged.targetLanguage,
+  });
   broadcastToContent(MSG.SET_SELECTION, { selection: merged.selection });
   broadcastToContent(MSG.SET_DICT, { dict: merged.dict });
   broadcastToContent(MSG.SET_UI_LANG, { uiLanguage: merged.uiLanguage });

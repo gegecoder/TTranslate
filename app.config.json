@@ -1,7 +1,7 @@
 {
   "name": "TTranslate",
   "description": "TTranslate 是一款轻量的浏览器翻译扩展",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "companyName": "心歌",
   "productIdentifier": "com.xinge.ttranslate",
   "fileDescription": "TTranslate浏览器翻译扩展",

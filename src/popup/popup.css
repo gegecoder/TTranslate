@@ -195,7 +195,7 @@ html, body {
 /* 弹窗固定宽度 + 最大高度；纵向 flex 让头部固定、内容区独立滚动。
    Chrome popup 最大高度 600px，超出后由 .app-body 自己滚。 */
 body {
-  width: 380px;
+  width: 440px;
   max-height: 600px;
   overflow: hidden;
   display: flex;
@@ -252,6 +252,7 @@ body {
   background: none; border: none;
   border-bottom: 2px solid transparent;
   color: var(--tmt-muted); font-size: var(--tmt-fs-body); cursor: pointer;
+  white-space: nowrap;   /* 外文标签（如俄语/德语）不换行 */
 }
 .tab:hover { color: var(--tmt-fg); }
 .tab.active {

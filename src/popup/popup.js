@@ -478,6 +478,8 @@ function applyUiLanguage() {
   renderTermTemplateSelect();
   syncLanguageUI();
   document.getElementById(ids.service).value = currentConfig.service;
+  // 固定窗口的 title 是初始化后动态写入的，静态词条收集不到，需单独刷新
+  if (isPinned) document.getElementById(ids.pin).title = t('popup.pin.unpinTitle');
   refreshButton();
 }
 
@@ -565,7 +567,7 @@ function initPin() {
     const screenW = window.screen.availWidth || 1920;
     const screenH = window.screen.availHeight || 1080;
     const screenTop = window.screen.availTop || 0;
-    const width = 400;
+    const width = 460;
     const height = screenH;
     const left = Math.max(0, screenW - width);   // 贴右
     const top = Math.max(0, screenTop);          // 贴顶

@@ -38,6 +38,10 @@ const state = {
 
   // 是否正在批量入队（此期间不要判定"翻译结束"）
   enqueueing: false,
+
+  // 收集代次：每次整页收集自增。语言切换会重开一代，
+  // 上一代在途请求返回的结果按代次过滤，避免旧语言译文插回页面。
+  gen: 0,
 };
 
 // 引擎就绪信号：消息处理器会 await 它，避免"消息先到、配置还没加载完"
@@ -225,6 +229,9 @@ async function kickOffTranslation(container) {
   }
 
   const paras = collectParagraphs(container, state.config.rule);
+  // 开启新一代收集：此前的在途请求结果已过期（例如切换了目标语言）
+  const gen = ++state.gen;
+  for (const para of paras.values()) para.gen = gen;
   // 按段落忽略：命中忽略哈希的段落直接剔除，不计入进度
   if (state.ignored?.size) {
     for (const [id, para] of [...paras]) {
@@ -243,10 +250,14 @@ async function kickOffTranslation(container) {
 
   // ★ 必须先设置回调，再入队。
   // 因为 enqueue 命中缓存时会同步调用 onBatchComplete，晚设会丢结果。
-  state.pipeline.onBatchComplete = (results) => {
+  state.pipeline.onBatchComplete = (rawResults) => {
+    // 过滤上一代的结果（切语言/重开收集后，旧语言的译文不能插回页面）
+    const results = rawResults.filter(r => r.para?.gen === state.gen);
     state.progress.done += results.length;
-    log.info(`pipeline flush: ${results.length} results (${state.progress.done}/${state.progress.total})`);
-    renderBatch(results, state);
+    if (results.length) {
+      log.info(`pipeline flush: ${results.length} results (${state.progress.done}/${state.progress.total})`);
+      renderBatch(results, state);
+    }
 
     // ★ 完成判据用"管线是否空闲"，而不是 done >= total。
     // 只看计数的话，去重/缓存等路径会让 done 永远差几条，
@@ -345,6 +356,7 @@ function onMutations(nodes) {
     if (!old || old.text !== para.text) {
       // 文本变了：旧译文层已失效，先移除，避免重复堆叠
       old?.targetWrapper?.remove();
+      para.gen = state.gen;
       state.paragraphs.set(id, para);
       state.pipeline.enqueue(para);
       enqueued++;
@@ -537,6 +549,26 @@ function installMessageHandlers() {
           if (state.config && msg.data?.position) {
             state.config.translationPosition = msg.data.position;
             applyPositionToExisting(state);
+          }
+          sendResponse({ ok: true });
+          break;
+
+        case MSG.SET_LANGUAGE:
+          // 语言对变更：必须同步进 state.config，否则点"翻译"仍用旧语言。
+          // 只有语言真的变了才重翻（每次保存配置都会广播，避免白跑一遍）。
+          if (state.config && msg.data) {
+            const nextFrom = msg.data.sourceLanguage || state.config.sourceLanguage;
+            const nextTo = msg.data.targetLanguage || state.config.targetLanguage;
+            const changed = nextFrom !== state.config.sourceLanguage || nextTo !== state.config.targetLanguage;
+            state.config.sourceLanguage = nextFrom;
+            state.config.targetLanguage = nextTo;
+            if (changed) {
+              log.info(`语言对更新：${nextFrom} → ${nextTo}`);
+              // 已排队的旧语言任务作废；在途结果由收集代次过滤
+              state.pipeline?.reset();
+              // 页面已有译文时按新语言重翻（缓存键带语言，不会命中旧译文）
+              if (state.translated) rerenderAll();
+            }
           }
           sendResponse({ ok: true });
           break;

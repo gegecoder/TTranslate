@@ -112,6 +112,7 @@ export const MSG = {
   SET_THEME:        'setTheme',
   SET_TRANSLATION_MODE: 'setTranslationMode',
   SET_POSITION:     'setPosition',
+  SET_LANGUAGE:     'setLanguage',
   SET_SERVICE:      'setService',
   SET_SELECTION:    'setSelection',
   SET_DICT:         'setDict',
