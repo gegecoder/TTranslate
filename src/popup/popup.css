@@ -351,6 +351,13 @@ label select, label input[type="text"], label textarea {
 .hint code {
   background: var(--tmt-code); padding: 1px 4px; border-radius: 3px; font-size: 11px;
 }
+/* 按钮正下方的小字注释（左对齐） */
+.hint.below {
+  margin-top: 8px;
+  text-align: left;
+  font-size: 11.5px;
+  opacity: 0.85;
+}
 
 /* 按钮下方的操作结果提示（成功/失败/引擎未响应） */
 .status {

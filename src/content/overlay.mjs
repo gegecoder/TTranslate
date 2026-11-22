@@ -244,7 +244,32 @@ function onMouseDown(e) {
 }
 
 function onKeyDown(e) {
-  if (e.key === 'Escape' && !pinned) { hideIcon(); hidePanel(); }
+  if (e.key === 'Escape' && !pinned) { hideIcon(); hidePanel(); return; }
+
+  // Alt+C：对当前选区直接弹出划词翻译浮层（无需鼠标再划一次）
+  // 优先用 e.code：部分键盘布局下 Alt+C 会输入 ç 等字符，key 不可靠
+  const isAltC = e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey &&
+    (e.code === 'KeyC' || (e.key || '').toLowerCase() === 'c');
+  if (!isAltC || !config.enabled) return;
+  // 焦点在面板内部（如原文编辑框）时不触发，避免重复翻译当前内容
+  if (panel && panel.contains(document.activeElement)) return;
+
+  const sel = window.getSelection();
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return;
+  const text = sel.toString().trim();
+  if (!text) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  let rect = sel.getRangeAt(0).getBoundingClientRect();
+  // 个别选区（如跨折叠行）拿不到尺寸，退回到视口左上角附近，保证面板可见
+  if (rect.width === 0 && rect.height === 0) {
+    rect = { left: 24, top: 80, right: 24, bottom: 80, width: 0, height: 0 };
+  }
+  currentSelection = { text, rect };
+  hideIcon();
+  translateAndShow(text, rect);
 }
 
 /** 处理选区：根据 showMode 决定直接翻译还是先显示图标 */
