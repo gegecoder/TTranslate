@@ -10,7 +10,7 @@
 import * as storage from './storage.js';
 import * as proxy from './api-proxy.js';
 import * as dictionary from './dictionary.js';
-import { register, handle, broadcastToContent, sendToContent } from './message-hub.js';
+import { register, handle, broadcastToContent, broadcastManyToContent, sendToContent } from './message-hub.js';
 import { MSG, STORAGE_KEY, log } from '../shared/constants.mjs';
 import { t, setUiLang, resolveUiLang } from '../shared/i18n.mjs';
 
@@ -49,31 +49,32 @@ register(MSG.GET_CONFIG, async () => {
 
 register(MSG.UPDATE_CONFIG, async (patch) => {
   const merged = await storage.saveConfig(patch);
-  // 配置变化时广播给所有 content 脚本热更新
-  broadcastToContent(MSG.SET_THEME, { theme: merged.theme, themeColor: merged.themeColor });
-  broadcastToContent(MSG.SET_SERVICE, { service: merged.service });
-  broadcastToContent(MSG.SET_TRANSLATION_MODE, { mode: merged.translationMode });
-  broadcastToContent(MSG.SET_POSITION, { position: merged.translationPosition });
-  // 语言对变更：content 的 state.config 必须同步，否则下次点击翻译仍用旧语言
-  broadcastToContent(MSG.SET_LANGUAGE, {
-    sourceLanguage: merged.sourceLanguage,
-    targetLanguage: merged.targetLanguage,
-  });
-  broadcastToContent(MSG.SET_SELECTION, { selection: merged.selection });
-  broadcastToContent(MSG.SET_DICT, { dict: merged.dict });
-  broadcastToContent(MSG.SET_UI_LANG, { uiLanguage: merged.uiLanguage });
-  broadcastToContent(MSG.SET_POPUP_THEME, {
-    popupTheme: merged.popupTheme,
-    popupThemeImage: merged.popupThemeImage || '',
-    popupThemeOpacity: merged.popupThemeOpacity,
-    popupThemeImageOpacity: merged.popupThemeImageOpacity,
-    popupThemeTextColor: merged.popupThemeTextColor,
-  });
-  broadcastToContent(MSG.SET_TEXT_STYLE, {
-    fontScale: merged.translationFontScale,
-    color: merged.translationColor,
-    custom: merged.translationColorCustom,
-  });
+  // 配置变化时广播给所有 content 脚本热更新。
+  // ★ 用 broadcastManyToContent 合并 9 条消息：只做一次 chrome.tabs.query，
+  // 后续每个 tab 内部并行发 9 条 sendMessage。
+  const msgs = [
+    [MSG.SET_THEME, { theme: merged.theme, themeColor: merged.themeColor }],
+    [MSG.SET_SERVICE, { service: merged.service }],
+    [MSG.SET_TRANSLATION_MODE, { mode: merged.translationMode }],
+    [MSG.SET_POSITION, { position: merged.translationPosition }],
+    [MSG.SET_LANGUAGE, { sourceLanguage: merged.sourceLanguage, targetLanguage: merged.targetLanguage }],
+    [MSG.SET_SELECTION, { selection: merged.selection }],
+    [MSG.SET_DICT, { dict: merged.dict }],
+    [MSG.SET_UI_LANG, { uiLanguage: merged.uiLanguage }],
+    [MSG.SET_POPUP_THEME, {
+      popupTheme: merged.popupTheme,
+      popupThemeImage: merged.popupThemeImage || '',
+      popupThemeOpacity: merged.popupThemeOpacity,
+      popupThemeImageOpacity: merged.popupThemeImageOpacity,
+      popupThemeTextColor: merged.popupThemeTextColor,
+    }],
+    [MSG.SET_TEXT_STYLE, {
+      fontScale: merged.translationFontScale,
+      color: merged.translationColor,
+      custom: merged.translationColorCustom,
+    }],
+  ];
+  broadcastManyToContent(msgs);
   // 右键菜单标题跟随界面语言
   setUiLang(resolveUiLang(merged.uiLanguage));
   chrome.contextMenus.update('tmt-toggle', { title: t('contextMenu.toggle') });

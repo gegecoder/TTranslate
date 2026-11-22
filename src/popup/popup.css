@@ -404,6 +404,30 @@ label select, label input[type="text"], label textarea {
 }
 .terms-actions .btn { flex: 1 1 0; }
 
+/* ---- 操作反馈 Toast（通用，popup 里各种操作都能拿这个冒泡提示） */
+.tmt-toast {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translate(-50%, 8px);
+  background: rgba(20, 20, 22, 0.92);
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+  padding: 8px 14px;
+  border-radius: 18px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.22s ease, transform 0.22s ease;
+  z-index: 1000;
+  white-space: nowrap;
+}
+.tmt-toast.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 /* ---- 普通翻译面板 ---------------------------------------------------------- */
 #text-input {
   width: 100%;
@@ -438,6 +462,7 @@ label select, label input[type="text"], label textarea {
 .result-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
   margin-top: 6px;
 }
 .copy-btn {
@@ -467,6 +492,9 @@ label select, label input[type="text"], label textarea {
 .phonetic-region { color: #999; }
 .phonetic-text { color: var(--tmt-out-fg); font-size: 13px; }
 .phonetic-speak {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   border: 1px solid var(--tmt-border);
   background: var(--tmt-field);
   border-radius: 4px;
@@ -476,7 +504,9 @@ label select, label input[type="text"], label textarea {
   line-height: 18px;
   color: var(--tmt-muted);
 }
+.phonetic-speak svg { display: block; width: 1.15em; height: 1.15em; }
 .phonetic-speak:hover { color: var(--tmt-primary); border-color: var(--tmt-primary); }
+.phonetic-speak.done { color: #1a9a5b; border-color: #bfe3cd; }
 
 /* ---- 界面主题：自定义背景图 ------------------------------------------------ */
 #theme-image-row,

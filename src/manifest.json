@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "TTranslate",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "浏览器翻译扩展",
   "background": {
     "service_worker": "background/service-worker.js",

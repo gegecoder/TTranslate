@@ -852,6 +852,52 @@
     display: grid; place-items: center;
   }
   .steps li b { display: block; color: var(--ink); margin-bottom: 2px; }
+
+  /* ---- 商店徽章 ---- */
+  .store-badges {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 6px;
+  }
+  .store-btn {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    text-decoration: none;
+    background: #fff;
+    color: var(--ink);
+    transition: border-color .18s ease, box-shadow .18s ease, transform .18s ease;
+  }
+  .store-btn:hover:not(.disabled) {
+    border-color: var(--blue);
+    box-shadow: 0 2px 10px rgba(52, 120, 246, .12);
+    transform: translateY(-1px);
+  }
+  .store-btn.disabled {
+    opacity: .55;
+    cursor: default;
+    background: #fafbfd;
+  }
+  .store-icon {
+    width: 38px; height: 38px;
+    border-radius: 9px;
+    flex-shrink: 0;
+    display: block;
+  }
+  .store-btn.disabled .store-icon { filter: grayscale(.55); }
+  .store-meta { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
+  .store-meta b { font-size: 14px; color: var(--ink); font-weight: 600; }
+  .store-meta small { font-size: 12px; color: var(--muted); }
+  .hint.muted {
+    font-size: 12px;
+    color: var(--muted);
+    margin: 0 0 14px;
+  }
+
   .code-inline {
     font-family: var(--mono);
     font-size: 12.5px;
@@ -1128,7 +1174,7 @@
       <div class="hero-meta">
         <span><i></i>本地缓存，译文秒回</span>
         <span><i></i>8 种显示模式 · 8 种显示主题</span>
-        <span><i></i>中文 / English 界面</span>
+        <span><i></i>多语言界面</span>
       </div>
     </div>
 
@@ -1292,7 +1338,7 @@
           </svg>
         </div>
         <h3>界面主题与多语言</h3>
-        <p>10 套界面主题（亮色、暗色与 8 种配色）可选，自定义主题支持本地背景图、透明度和文字颜色；界面支持中文 / English 即时切换。</p>
+        <p>10 套界面主题（亮色、暗色与 8 种配色）可选，自定义主题支持本地背景图、透明度和文字颜色；界面支持多语言即时切换。</p>
         <span class="tagline">设置与划词浮层同步换肤</span>
       </article>
     </div>
@@ -1451,6 +1497,25 @@
     <div class="install-grid">
       <div class="panel reveal">
         <h3>安装步骤</h3>
+        <div class="store-badges">
+          <a class="store-btn store-edge"
+             href="https://microsoftedge.microsoft.com/addons/detail/ttranslate/nknikmpmeledfinldkedagdghemcbena"
+             target="_blank" rel="noopener" aria-label="在 Edge 商店安装">
+            <img class="store-icon" src="src/public/edge.png" alt="" loading="eager"/>
+            <span class="store-meta">
+              <b>Edge 加载项</b>
+              <small>商店搜索「TTranslate」一键安装</small>
+            </span>
+          </a>
+          <a class="store-btn store-chrome disabled" title="Chrome Web Store 上架中">
+            <img class="store-icon" src="src/public/chrome.png" alt="" loading="eager"/>
+            <span class="store-meta">
+              <b>Chrome 应用商店</b>
+              <small>即将开放 · 可先下载 .crx 离线安装</small>
+            </span>
+          </a>
+        </div>
+        <p class="hint muted">未上架的浏览器可使用下方离线安装方式。</p>
         <ol class="steps">
           <li>
             <b>打开扩展管理页</b>
@@ -1620,7 +1685,7 @@
     </div>
     <div class="foot-bottom">
       <span data-cfg="copyright">© 2026, 心歌</span>
-      <span><span>版本</span> <b data-cfg="version">0.1.x</b><span> · Manifest V3</span></span>
+      <span><span>版本</span> <b data-cfg="version">1.0.3</b><span> · Manifest V3</span></span>
     </div>
   </div>
 </footer>
@@ -1643,7 +1708,7 @@
     "hero.install": { "en": "Installation", "zh": "安装步骤" },
     "hero.meta.cache": { "en": "Local cache, instant results", "zh": "本地缓存，译文秒回" },
     "hero.meta.themes": { "en": "8 display modes · 8 themes", "zh": "8 种显示模式 · 8 种显示主题" },
-    "hero.meta.spa": { "en": "UI in Chinese or English", "zh": "中文 / English 界面" },
+    "hero.meta.spa": { "en": "Multi-language UI", "zh": "多语言界面" },
     "mock.done": { "en": "Translation complete", "zh": "翻译完成" },
     "mock.progress": { "en": "48 / 48 paragraphs", "zh": "48 / 48 段落" },
     "mock.select": { "en": "Select to translate", "zh": "划词即译" },
@@ -1683,7 +1748,7 @@
     "features.card8.desc2": { "en": "+ click it again to bring it back. Ignored paragraphs are remembered per site.", "zh": "+ 点击同一段即可恢复；忽略状态按域名保存，刷新后依然有效。" },
     "features.card8.tag": { "en": "Alt + click · remembered per site", "zh": "Alt + 点击 · 按站点记忆" },
     "features.card9.title": { "en": "Interface themes and languages", "zh": "界面主题与多语言" },
-    "features.card9.desc": { "en": "Ten interface themes (light, dark and eight colours); the custom theme supports a local background image, opacity and text colour. The UI switches between Chinese and English instantly.", "zh": "10 套界面主题（亮色、暗色与 8 种配色）可选，自定义主题支持本地背景图、透明度和文字颜色；界面支持中文 / English 即时切换。" },
+    "features.card9.desc": { "en": "Ten interface themes (light, dark and eight colours); the custom theme supports a local background image, opacity and text colour. The UI switches between multiple languages instantly.", "zh": "10 套界面主题（亮色、暗色与 8 种配色）可选，自定义主题支持本地背景图、透明度和文字颜色；界面支持多语言即时切换。" },
     "features.card9.tag": { "en": "Settings and popover share the same skin", "zh": "设置与划词浮层同步换肤" },
     "render.title": { "en": "You decide how translations look", "zh": "译文怎么排，由你决定" },
     "render.desc": { "en": "Toggle the options to preview display modes and themes live. In hover mode, move the pointer over a paragraph to reveal its translation.", "zh": "切换下面的选项，实时预览显示模式与显示主题的组合效果；「悬停展开」模式下把鼠标移到段落上即可看到译文。" },

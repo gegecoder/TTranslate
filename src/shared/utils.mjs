@@ -86,6 +86,20 @@ export { log } from './constants.mjs';
 const displayCache = new WeakMap();
 
 /**
+ * 获取元素 display 值，走 WeakMap 缓存避免重复 getComputedStyle 触发同步布局。
+ * walker.mjs 的 isBlockElement、utils.mjs 的 getBlockAncestor、isAnchorIndependent
+ * 都统一走这个入口，三处共享同一份缓存。
+ */
+export function getCachedDisplay(el) {
+  let d = displayCache.get(el);
+  if (d === undefined) {
+    try { d = getComputedStyle(el).display; } catch { d = 'inline'; }
+    displayCache.set(el, d);
+  }
+  return d;
+}
+
+/**
  * 语义块级标签：即使 computed display 是 inline-block
  * （button 默认 inline-block，<li> 也常被写成 inline-block），
  * 它们仍然应该作为段落分组的根。
@@ -100,9 +114,7 @@ export const BLOCK_TAGS = new Set([
 function isAnchorIndependent(a) {
   if (a.tagName !== 'A') return false;
   try {
-    const d = displayCache.get(a) ?? getComputedStyle(a).display;
-    displayCache.set(a, d);
-    return d !== 'inline';
+    return getCachedDisplay(a) !== 'inline';
   } catch { return false; }
 }
 
@@ -116,8 +128,7 @@ function isAnchorIndependent(a) {
  *     → 也返回自身，防止多个相邻链接被合并成一段
  *  3) 其他：按 computed display 往上爬升，inline/inline-block/inline-flex/none 跳过
  *
- * 背景：百度百科搜索栏的 button 默认就是 inline-block，旧版只看 display 会把
- * lemmaBtn + siteBtn + intlBtn + helpBtn 全部爬到同一个 block 祖先、合并成一段，
+ * 背景：旧版只看 display 会把 lemmaBtn + siteBtn + intlBtn + helpBtn 全部爬到同一个 block 祖先、合并成一段，
  * 译文串写导致后三个按钮被清空（fixedWrapper 滚动条同样受影响）。
  */
 export function getBlockAncestor(el, container) {
@@ -127,11 +138,7 @@ export function getBlockAncestor(el, container) {
       if (BLOCK_TAGS.has(cur.tagName)) return cur;
       if (isAnchorIndependent(cur)) return cur;
 
-      let d = displayCache.get(cur);
-      if (d === undefined) {
-        d = getComputedStyle(cur).display;
-        displayCache.set(cur, d);
-      }
+      const d = getCachedDisplay(cur);
       if (d !== 'inline' && d !== 'inline-block' && d !== 'inline-flex' && d !== 'none') {
         return cur;
       }

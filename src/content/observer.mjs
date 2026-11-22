@@ -17,13 +17,18 @@ import { debounce } from '../shared/utils.mjs';
  * 返回一个卸载函数（但我们不卸载——页面生命周期只有一次引擎）。
  */
 export function installObserver(container, onMutations) {
+  // SPA 页面（React/Vue render 等）会产生大量字符级变更，用 characterDataOldValue
+  // 配合过滤可以跳过 input 输入、时钟更新等无意义的字符修改。
   const callback = debounce((mutations) => {
-    // 过滤掉不重要的变更
     const relevant = [];
     for (const m of mutations) {
-      // characterData 来自文本节点变化——一般是原文本，我们感兴趣
       if (m.type === 'characterData') {
-        relevant.push(m.target);
+        // 只有文本真的变了（oldValue !== newValue）才纳入；
+        // React 框架有时会把相同文本节点替换掉（无实际变化），这里跳过。
+        if (m.oldValue !== undefined && m.oldValue === m.target.nodeValue) continue;
+        // 跳过太短的字符变更（< 10 字符通常是 input 输入、倒计时、滚动数字等）
+        if ((m.target.nodeValue || '').trim().length < 2) continue;
+        relevant.push(m.target.parentElement || m.target);
         continue;
       }
       for (const node of m.addedNodes) {
@@ -38,13 +43,14 @@ export function installObserver(container, onMutations) {
     if (relevant.length > 0) {
       onMutations(relevant);
     }
-  }, 300);
+  }, 150);  // SPA 场景 300ms 太慢，改为 150ms；对静态站点无影响
 
   const observer = new MutationObserver(callback);
   observer.observe(container, {
     childList: true,
     subtree: true,
     characterData: true,
+    characterDataOldValue: true,  // 启用才能做 oldValue === newValue 过滤
   });
 
   // SPA 路由变化监听：history API hook

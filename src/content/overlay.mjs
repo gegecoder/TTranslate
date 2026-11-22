@@ -10,7 +10,7 @@
  * ============================================================================
  */
 
-import { MSG, log, LANGUAGES } from '../shared/constants.mjs';
+import { MSG, log, LANGUAGES, ICONS } from '../shared/constants.mjs';
 import { playWord } from '../shared/speech.mjs';
 import { t, langLabel, regionLabel } from '../shared/i18n.mjs';
 
@@ -180,7 +180,12 @@ export function installSelection(opts) {
   // Esc：关闭浮层（图钉固定时不关闭）
   document.addEventListener('keydown', onKeyDown, true);
   // 滚动时隐藏浮层（图钉固定时不隐藏）
-  document.addEventListener('scroll', () => { hideIcon(); if (!pinned) hidePanel(); }, true);
+  // 面板内部区域（正文/译文）可滚动，这类滚动不能当作"页面滚动"关掉面板
+  document.addEventListener('scroll', (e) => {
+    if (panel && panel.contains(e.target)) return;
+    hideIcon();
+    if (!pinned) hidePanel();
+  }, { capture: true, passive: true });
 
   // ---- 输入框 triggerKey ---------------------------------------------------
   document.addEventListener('keydown', async (ev) => {
@@ -383,7 +388,7 @@ async function translateAndShow(text, rect, fromLang, toLang) {
 
 /** 创建并显示译文面板
  * 布局（类似 popup 普通翻译）：
- *   标题栏：TTranslate  [📌] [✕]
+ *   标题栏：TTranslate  [图钉] [关闭]
  *   原文区：选中的文本
  *   语言对：源语言 ▼  →  目标语言 ▼
  *   译文区：翻译结果
@@ -403,8 +408,13 @@ function showPanel(rect, sourceText, resultText) {
   panel.style.cssText = [
     'position: fixed',
     'z-index: 2147483647',
-    'width: min(380px, 92vw)',
+    'width: min(480px, 92vw)',
+    // 默认高度 300px；屏幕过矮时按视口收缩，正文区内部滚动
+    'height: min(300px, 82vh)',
     'box-sizing: border-box',
+    // 纵向 flex：右侧/下侧拖拽改变尺寸后，正文区独占剩余空间并可滚动
+    'display: flex',
+    'flex-direction: column',
     `background: ${p.bg}`,
     `color: ${p.fg}`,
     `border: 1px solid ${p.border}`,
@@ -498,7 +508,7 @@ function showPanel(rect, sourceText, resultText) {
   // 关闭按钮（图钉右边）
   const closeBtn = document.createElement('button');
   closeBtn.type = 'button';
-  closeBtn.innerHTML = '✕';
+  closeBtn.innerHTML = ICONS.close;
   closeBtn.title = t('overlay.close');
   closeBtn.style.cssText = [
     'width: 24px', 'height: 24px',
@@ -531,6 +541,12 @@ function showPanel(rect, sourceText, resultText) {
     const startY = e.clientY;
     const startLeft = panel.offsetLeft;
     const startTop = panel.offsetTop;
+    // 关键优化：在 mousedown 时一次性读面板尺寸，onMove 里不再读 offsetWidth/Height
+    // 否则每帧读 offsetWidth 会强制同步布局（layout thrashing）
+    const w = panel.offsetWidth;
+    const h = panel.offsetHeight;
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
     let dragged = false;
 
     header.style.cursor = 'grabbing';
@@ -540,9 +556,10 @@ function showPanel(rect, sourceText, resultText) {
       const dy = ev.clientY - startY;
       if (!dragged && Math.abs(dx) + Math.abs(dy) < 3) return;
       dragged = true;
-      // 夹在视口内，避免拖出屏幕看不见
-      const maxLeft = window.innerWidth - panel.offsetWidth;
-      const maxTop = window.innerHeight - panel.offsetHeight;
+      // 夹在视口内，避免拖出屏幕看不见——用预读的 w/h/vw/vh 算边界，
+      // 不再每帧读 panel.offsetWidth / offsetHeight / window.innerWidth
+      const maxLeft = vw - w;
+      const maxTop = vh - h;
       panel.style.left = `${Math.max(0, Math.min(startLeft + dx, maxLeft))}px`;
       panel.style.top = `${Math.max(0, Math.min(startTop + dy, maxTop))}px`;
     };
@@ -557,7 +574,16 @@ function showPanel(rect, sourceText, resultText) {
 
   // ---- 正文区 ----
   const body = document.createElement('div');
-  body.style.cssText = 'padding: 10px 12px; display: flex; flex-direction: column; gap: 10px;';
+  body.style.cssText = [
+    'padding: 10px 12px',
+    'display: flex',
+    'flex-direction: column',
+    'gap: 10px',
+    // 面板被拖拽固定高度后，正文区可滚动，页脚始终可见
+    'flex: 1 1 auto',
+    'min-height: 0',
+    'overflow: auto',
+  ].join(';');
 
   // 1) 原文：可编辑输入框（初始为选中文本，修改后防抖自动翻译）
   const sourceEl = document.createElement('textarea');
@@ -782,6 +808,61 @@ function showPanel(rect, sourceText, resultText) {
   panel.appendChild(body);
   panel.appendChild(footer);
 
+  // ---- 缩放手柄：右边缘 / 下边缘 / 右下角 ----
+  // 半透明细条贴在面板内侧，不改变原有外观，只提供拖拽热区。
+  const mkHandle = (cssText, dir) => {
+    const h = document.createElement('div');
+    h.style.cssText = ['position: absolute', 'background: transparent', ...cssText].join(';');
+    h.style.cursor = dir === 'x' ? 'ew-resize' : dir === 'y' ? 'ns-resize' : 'nwse-resize';
+    h.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const startW = panel.offsetWidth;
+      const startH = panel.offsetHeight;
+      // 关键优化：在 mousedown 时一次性读面板位置和视口尺寸，onMove 里不再读 offsetLeft/Top
+      // 否则每帧读 offsetLeft 会强制同步布局（layout thrashing）
+      const startLeft = panel.offsetLeft;
+      const startTop = panel.offsetTop;
+      const vw = document.documentElement.clientWidth || window.innerWidth;
+      const vh = window.innerHeight;
+      // 首次缩放：锁定当前尺寸为显式宽高，并放开译文区的高度上限，
+      // 让多出来的空间交给正文区滚动，而不是留下大片空白
+      if (!panel.__tmtSized) {
+        panel.__tmtSized = true;
+        panel.style.width = `${startW}px`;
+        panel.style.height = `${startH}px`;
+        result.style.maxHeight = 'none';
+      }
+      const onMove = (ev) => {
+        if (dir.includes('x')) {
+          // 左边固定，只改宽度；夹在视口内。用预读的 startLeft/vw 算上界。
+          const maxW = vw - startLeft - 8;
+          const w = Math.max(260, Math.min(startW + (ev.clientX - startX), Math.max(260, maxW)));
+          panel.style.width = `${w}px`;
+        }
+        if (dir.includes('y')) {
+          // 上边固定，只改高度；夹在视口内。用预读的 startTop/vh 算上界。
+          const maxH = vh - startTop - 8;
+          const hgt = Math.max(160, Math.min(startH + (ev.clientY - startY), Math.max(160, maxH)));
+          panel.style.height = `${hgt}px`;
+        }
+      };
+      const onUp = () => {
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+      };
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+    panel.appendChild(h);
+    return h;
+  };
+  mkHandle(['top: 0', 'right: 0', 'width: 6px', 'height: 100%', 'z-index: 2'], 'x');
+  mkHandle(['left: 0', 'bottom: 0', 'height: 6px', 'width: 100%', 'z-index: 2'], 'y');
+  mkHandle(['right: 0', 'bottom: 0', 'width: 12px', 'height: 12px', 'z-index: 3'], 'xy');
+
   // 阻止面板内的 mousedown 冒泡到 document（避免触发外部点击关闭）
   panel.addEventListener('mousedown', (e) => e.stopPropagation());
 
@@ -886,9 +967,14 @@ async function updatePhonetic(text) {
       speakBtn.type = 'button';
       // 不显示音标时，按钮上带上口音标签，避免两个按钮长得一模一样
       const regionText = regionLabel(p.region);
-      speakBtn.textContent = showPhonetic ? '🔊' : `🔊${regionText ? ' ' + regionText : ''}`;
+      speakBtn.innerHTML = (!showPhonetic && regionText)
+        ? `${ICONS.speaker}<span>${regionText}</span>`
+        : ICONS.speaker;
       speakBtn.title = regionText ? t('common.speakTip', { region: regionText }) : t('common.speakTipNoRegion');
-      speakBtn.style.cssText = [
+      const miniBtnStyle = [
+        'display: inline-flex',
+        'align-items: center',
+        'gap: 4px',
         `border: 1px solid ${P().border}`,
         `background: ${P().field}`,
         `color: ${P().muted}`,
@@ -898,12 +984,49 @@ async function updatePhonetic(text) {
         'font-size: 12px',
         'line-height: 18px',
       ].join(';');
+      // 图标与音标行文字等高（1.15em ≈ 14px），避免 SVG 比 emoji 视觉偏小
+      const setMiniIcon = (btn) => {
+        const svg = btn.querySelector('svg');
+        if (!svg) return;
+        svg.style.display = 'block';
+        svg.style.width = '1.15em';
+        svg.style.height = '1.15em';
+      };
+      speakBtn.style.cssText = miniBtnStyle;
+      setMiniIcon(speakBtn);
       speakBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         e.preventDefault();
         playWord(word, p.audio, p.region === '英' ? 'en-GB' : 'en-US');
       });
       item.appendChild(speakBtn);
+
+      // 复制该条音标（没有音标文本时退回复制单词）
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.innerHTML = ICONS.copy;
+      copyBtn.title = t('common.copy');
+      copyBtn.style.cssText = miniBtnStyle;
+      setMiniIcon(copyBtn);
+      copyBtn.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        e.preventDefault();
+        const value = (p.text || '').trim() || word;
+        try {
+          await navigator.clipboard.writeText(value);
+          copyBtn.innerHTML = ICONS.check;
+          setMiniIcon(copyBtn);
+          copyBtn.style.color = '#1a9a5b';
+          copyBtn.style.borderColor = '#bfe3cd';
+        } catch { /* 剪贴板不可用时保持图标不变 */ }
+        setTimeout(() => {
+          copyBtn.innerHTML = ICONS.copy;
+          setMiniIcon(copyBtn);
+          copyBtn.style.color = P().muted;
+          copyBtn.style.borderColor = P().border;
+        }, 1200);
+      });
+      item.appendChild(copyBtn);
     }
 
     rowNow.appendChild(item);

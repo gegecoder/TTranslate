@@ -347,11 +347,8 @@ function renderReplaceInPlace(para, translation, state) {
   para.targetWrapper = null;
 
   // ---- 导航/固定宽度容器的溢出保护 ----
-  // 百度百科蓝色导航每个 dl 有 width:94-126px，中文 2 字塞下，
-  // 英文译文长 2-3 倍会直接溢出、撑破导航栏布局。
   // 只对 BLOCK_TAGS 里的语义块级标签（dt/dd/button/li/h1-h6）加约束：
-  // 它们天然有父容器的固定宽度限制；div 这类布局容器（如下拉菜单里的
-  // navBarItem）宽度自适应，加 ellipsis 反而会误截断下拉子项。
+  // 它们天然有父容器的固定宽度限制；div 这类布局容器（如下拉菜单里的navBarItem）宽度自适应，加 ellipsis 反而会误截断下拉子项。
   if (para.isNav && BLOCK_TAGS.has(para.blockEl.tagName)) {
     const el = para.blockEl;
     if (el.nodeType === 1) {

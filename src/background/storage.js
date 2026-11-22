@@ -35,7 +35,10 @@ export async function loadConfig() {
     const prev = Number(merged.configVersion || 1);
     if (prev < 2) merged.enabled = DEFAULT_CONFIG.enabled;
     if (prev < 3) merged.service = DEFAULT_CONFIG.service;
-    if (prev < 4) merged.service = DEFAULT_CONFIG.service;
+    // prev < 4 是历史遗留的复制粘贴：原本应该迁移 translationMode 或其他字段，
+    // 但实际内容和 prev < 3 完全相同。留一个空注释说明迁移已在 prev < 3 时完成，
+    // 避免未来有人误以为此处还有遗漏的迁移逻辑。
+    // if (prev < 4) /* 已在 prev < 3 时处理 */;
     if (prev < 5) merged.selection = { ...merged.selection, enabled: DEFAULT_CONFIG.selection.enabled };
     if (prev < 6) merged.selection = { ...merged.selection, showMode: DEFAULT_CONFIG.selection.showMode };
     merged.configVersion = CONFIG_VERSION;

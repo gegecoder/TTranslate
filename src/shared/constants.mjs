@@ -5,8 +5,7 @@
  * 所有标记名、消息类型、存储 key、CSS class 集中在此，
  * 避免魔法字符串散落各处。修改此文件不会影响其他模块的调用方式。
  * 注意：`log` 也定义在这里而不是 utils.mjs，避免 ESM re-export 链脆弱性
- * （MV3 service worker 的模块解析很严格，re-export 环节任何异常都会让
- *  下游看到"模块没导出 XXX"的 generic 报错）。
+ * （MV3 service worker 的模块解析很严格，re-export 环节任何异常都会让下游看到"模块没导出 XXX"的 generic 报错）。
  * ============================================================================
  */
 
@@ -56,8 +55,9 @@ function pushLog(level, args) {
 }
 
 // 构建模式：build.mjs 编译期用 esbuild define 把 __TMT_BUILD_MODE__ 替换成
-//  'dev' 或 'prod'，这里 fallback 是 'dev'（源码被直接 import 时）。
-export const BUILD_MODE = typeof __TMT_BUILD_MODE__ !== 'undefined' ? __TMT_BUILD_MODE__ : 'dev';
+// 'dev' 或 'prod'。fallback 默认 'prod'——如果构建 define 遗漏，
+// 生产环境绝不会意外跑成 dev 模式（关掉所有 console.debug/warn 和日志缓冲写入）。
+export const BUILD_MODE = typeof __TMT_BUILD_MODE__ !== 'undefined' ? __TMT_BUILD_MODE__ : 'prod';
 const IS_DEV = BUILD_MODE !== 'prod';
 
 // 日志工具：生产模式完全关闭（空函数），开发模式同时打印 + 写缓冲
@@ -92,6 +92,17 @@ export const MARK = {
   ERROR_ID:           'data-tmt-error',
   ROOT_PROP:          '__tmt_root',
   PARAGRAPH_PROP:     '__tmt_paragraph',
+};
+
+/**
+ * 统一的内联 SVG 图标库（stroke 用 currentColor，跟随按钮文字颜色）。
+ * popup 与划词浮层共用，避免一处用 emoji、一处用字符导致风格不一致。
+ */
+export const ICONS = {
+  speaker: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.6 8.4a5 5 0 0 1 0 7.2"/><path d="M18.4 5.6a9 9 0 0 1 0 12.8"/></svg>',
+  copy: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
+  check: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>',
+  close: '<svg viewBox="0 0 24 24" width="1em" height="1em" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>',
 };
 
 // ---- 消息类型 --------------------------------------------------------------
@@ -223,7 +234,7 @@ export const DEFAULT_CONFIG = {
 
   // 显示主题（CSS 变量，渲染时会根据 themeColor 动态派生 marker/dashed/underline/wavy/blockquote/card/glass 的装饰色）
   themes: {
-    none:       { backgroundColor: 'transparent', borderBottom: 'none', borderLeft: 'none', padding: '0', border辐射: '0', boxShadow: 'none', textIndent: '0', textDecoration: 'none', backdropFilter: 'none' },
+    none:       { backgroundColor: 'transparent', borderBottom: 'none', borderLeft: 'none', padding: '0', boxShadow: 'none', textIndent: '0', textDecoration: 'none', backdropFilter: 'none' },
     dashed:     { backgroundColor: 'transparent', borderBottom: '2px dashed #888', borderLeft: 'none', padding: '1px 0', borderRadius: '0', boxShadow: 'none', textIndent: '0', textDecoration: 'none', backdropFilter: 'none' },
     underline:  { backgroundColor: 'transparent', borderBottom: '2px solid #4c8bf5', borderLeft: 'none', padding: '1px 0', borderRadius: '0', boxShadow: 'none', textIndent: '0', textDecoration: 'none', backdropFilter: 'none' },
     blockquote: { backgroundColor: 'rgba(0,0,0,0.04)', borderBottom: 'none', borderLeft: '4px solid #ccc', padding: '4px 10px', borderRadius: '0 4px 4px 0', boxShadow: 'none', textIndent: '0', textDecoration: 'none', backdropFilter: 'none' },

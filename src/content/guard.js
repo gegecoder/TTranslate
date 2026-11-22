@@ -66,14 +66,21 @@
     return false;
   }
 
+  // 正则缓存：pattern 字符串 → RegExp 对象，避免每次调用都 new RegExp
+  const patternRegexCache = new Map();
+
   /** 简单的 URL glob 匹配 */
   function matchesPattern(url, patterns) {
     if (!patterns?.length) return false;
     try {
       return patterns.some(p => {
-        const re = new RegExp('^' + p
-          .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-          .replace(/\*/g, '.*') + '$');
+        let re = patternRegexCache.get(p);
+        if (!re) {
+          re = new RegExp('^' + p
+            .replace(/[.+^${}()|[\]\\]/g, '\\$&')
+            .replace(/\*/g, '.*') + '$');
+          patternRegexCache.set(p, re);
+        }
         return re.test(url);
       });
     } catch { return false; }

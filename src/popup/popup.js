@@ -6,7 +6,7 @@
  * ============================================================================
  */
 
-import { MSG, LANGUAGES, DEFAULT_CONFIG, BUILD_MODE, TERM_TEMPLATES, redactDataUrls } from '../shared/constants.mjs';
+import { MSG, LANGUAGES, DEFAULT_CONFIG, BUILD_MODE, TERM_TEMPLATES, ICONS, redactDataUrls } from '../shared/constants.mjs';
 import { playWord } from '../shared/speech.mjs';
 import {
   t, setUiLang, resolveUiLang, regionLabel, langLabel, serviceName,
@@ -70,6 +70,7 @@ const ids = {
   textOut: 'text-out',
   textPhonetic: 'text-phonetic',
   copyText: 'btn-copy-text',
+  copySource: 'btn-copy-source',
 };
 
 /**
@@ -263,17 +264,45 @@ async function init() {
     document.getElementById(ids.termsList).value = tpl.terms.join('|');
     sync();
   });
-  // 应用：把下拉所选模板写入关键词框并保存（「自定义」保留当前词表）
-  document.getElementById(ids.termsApply).addEventListener('click', () => {
-    const tpl = TERM_TEMPLATES[document.getElementById(ids.termsTemplate).value];
-    if (!tpl?.terms?.length) return;
-    document.getElementById(ids.termsList).value = tpl.terms.join('|');
-    sync();
+
+  /** 计算当前词表里实际有多少条（按 | 或换行分隔，去空） */
+  const countTerms = () =>
+    (document.getElementById(ids.termsList).value || '')
+      .split(/[|\n\r]/)
+      .map(s => s.trim())
+      .filter(Boolean).length;
+
+  /** 轻量成功气泡：淡入向上滑，1.8s 后自动消失 */
+  const showToast = (text) => {
+    const t = document.createElement('div');
+    t.className = 'tmt-toast';
+    t.textContent = text;
+    document.body.appendChild(t);
+    requestAnimationFrame(() => { t.classList.add('show'); });
+    setTimeout(() => {
+      t.classList.remove('show');
+      setTimeout(() => t.remove(), 300);
+    }, 1800);
+  };
+
+  // 应用：立即保存 textarea 当前值（包括用户新加的自定义词），不走防抖 timer。
+  // 修之前的 bug：应用按钮原来会把下拉模板值覆盖回 textarea 再 sync——
+  // 用户在 textarea 加的新词被模板原值覆盖掉，等于"应用"做了"还原"。
+  document.getElementById(ids.termsApply).addEventListener('click', async () => {
+    clearTimeout(termsTimer);
+    await sync();
+    const n = countTerms();
+    showToast(n > 0
+      ? t('popup.terms.appliedCount', { count: n })
+      : t('popup.terms.appliedEmpty'));
   });
-  // 还原：恢复默认的「计算机通用」模板
-  document.getElementById(ids.termsReset).addEventListener('click', () => {
+
+  // 还原：恢复默认的「计算机通用」模板并立即保存 + 提示
+  document.getElementById(ids.termsReset).addEventListener('click', async () => {
     document.getElementById(ids.termsList).value = TERM_TEMPLATES.general.terms.join('|');
-    sync();
+    clearTimeout(termsTimer);
+    await sync();
+    showToast(t('popup.terms.reset'));
   });
 
   // 界面语言切换：保存配置 + 立即重渲当前弹窗
@@ -307,23 +336,25 @@ async function init() {
     applyPopupTheme();
     await sync();
   });
-  // 自定义主题：组件 / 背景图透明度滑块，拖动即时预览、防抖保存
-  let themeAlphaTimer = null;
+  // 自定义主题：组件 / 背景图透明度滑块 + 文字颜色，各自独立防抖定时器
+  let themePreviewTimer = null;
+  const scheduleSync = () => {
+    clearTimeout(themePreviewTimer);
+    themePreviewTimer = setTimeout(sync, 300);
+  };
   const onAlphaInput = () => {
     currentConfig.popupThemeOpacity = Number(document.getElementById(ids.themeAlpha).value) / 100;
     currentConfig.popupThemeImageOpacity = Number(document.getElementById(ids.themeImageAlpha).value) / 100;
     applyPopupTheme();
-    clearTimeout(themeAlphaTimer);
-    themeAlphaTimer = setTimeout(sync, 300);
+    scheduleSync();
   };
   document.getElementById(ids.themeAlpha).addEventListener('input', onAlphaInput);
   document.getElementById(ids.themeImageAlpha).addEventListener('input', onAlphaInput);
-  // 文字颜色：取色即时预览、防抖保存
+  // 文字颜色：取色即时预览、独立防抖保存
   document.getElementById(ids.themeTextColor).addEventListener('input', (e) => {
     currentConfig.popupThemeTextColor = e.target.value;
     applyPopupTheme();
-    clearTimeout(themeAlphaTimer);
-    themeAlphaTimer = setTimeout(sync, 300);
+    scheduleSync();
   });
 
   document.getElementById(ids.toggle).addEventListener('click', onToggleClick);
@@ -342,6 +373,7 @@ async function init() {
     if (!WORD_RE.test(text)) hideTextPhonetic();
   });
   document.getElementById(ids.copyText).addEventListener('click', onCopyText);
+  document.getElementById(ids.copySource).addEventListener('click', onCopySource);
 
   // 打开弹窗时同步按钮状态：页面已在翻译中则继续显示进度
   const p = await refreshButton();
@@ -804,12 +836,34 @@ async function renderPhonetic(text) {
       speakBtn.className = 'phonetic-speak';
       // 不显示音标时，按钮上带口音标签，避免两个按钮完全一样
       const region = regionLabel(p.region);
-      speakBtn.textContent = showPhonetic ? '🔊' : `🔊${region ? ' ' + region : ''}`;
+      speakBtn.innerHTML = (!showPhonetic && region)
+        ? `${ICONS.speaker}<span>${region}</span>`
+        : ICONS.speaker;
       speakBtn.title = region ? t('common.speakTip', { region }) : t('common.speakTipNoRegion');
       speakBtn.addEventListener('click', () => {
         playWord(word, p.audio, p.region === '英' ? 'en-GB' : 'en-US');
       });
       item.appendChild(speakBtn);
+
+      // 复制该条音标（没有音标文本时退回复制单词）
+      const copyBtn = document.createElement('button');
+      copyBtn.type = 'button';
+      copyBtn.className = 'phonetic-speak';
+      copyBtn.innerHTML = ICONS.copy;
+      copyBtn.title = t('common.copy');
+      copyBtn.addEventListener('click', async () => {
+        const value = (p.text || '').trim() || word;
+        try {
+          await navigator.clipboard.writeText(value);
+          copyBtn.innerHTML = ICONS.check;
+          copyBtn.classList.add('done');
+        } catch { /* 剪贴板不可用时保持图标不变 */ }
+        setTimeout(() => {
+          copyBtn.innerHTML = ICONS.copy;
+          copyBtn.classList.remove('done');
+        }, 1200);
+      });
+      item.appendChild(copyBtn);
     }
 
     box.appendChild(item);
@@ -822,6 +876,29 @@ function hideTextPhonetic() {
   if (!box) return;
   box.hidden = true;
   box.textContent = '';
+}
+
+/** 复制普通翻译的原文，按钮短暂反馈"已复制" */
+async function onCopySource() {
+  const input = document.getElementById(ids.textInput);
+  const btn = document.getElementById(ids.copySource);
+  const text = input.value || '';
+  if (!text.trim()) return;
+
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.textContent = t('common.copied');
+    btn.classList.add('done');
+    setTimeout(() => {
+      btn.textContent = t('common.copySource');
+      btn.classList.remove('done');
+    }, 1200);
+  } catch {
+    // 剪贴板不可用时退化为选中输入框内容，让用户手动 Ctrl+C
+    input.focus();
+    input.select();
+    btn.textContent = t('common.pressCtrlC');
+  }
 }
 
 /** 复制普通翻译的译文，按钮短暂反馈"已复制" */

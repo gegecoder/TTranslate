@@ -1,13 +1,8 @@
 /**
  * ============================================================================
- * background/api-proxy.js —— 翻译 API 代理（后台统一出网）
+ * background/api-proxy.js —— 翻译 API 代理
  * ============================================================================
- * 为什么所有翻译请求都经后台走？
- *   1. content script 的 CORS 限制比 service worker 宽；
- *   2. 可以在后台集中做请求头伪装（静态 DNR 表）；
- *   3. 便于统一限流、重试、缓存。
- *
- * 实现四个后端：
+ * 内置引擎实现：
  *   - Bing 免费翻译（https://edge.microsoft.com/translate/translatetext）—— 默认
  *     一次返回同样数量的结果（自带语言检测）。实测国内可用、无需 key。
  *   - MyMemory（https://api.mymemory.translated.net/get）

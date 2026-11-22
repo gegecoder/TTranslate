@@ -8,8 +8,7 @@
  *   collectParas()    TreeWalker 遍历 + 段落收集 + 可译性过滤
  *   queue.translate() 排队送进 pipeline（批合并 → 并发请求 → 渲染）
  *
- * 其他模块（walker / pipeline / render / observer）只暴露单一职责的函数，
- * 由 engine 串起来。
+ * 其他模块（walker / pipeline / render / observer）只暴露单一职责的函数，由 engine 串起来。
  * ============================================================================
  */
 
@@ -21,7 +20,7 @@ import { TranslationCache } from './cache.mjs';
 import { renderBatch, applyThemeToExisting, clearSideBySide, installModeInteractions, applyTranslationStyleToExisting, applyPositionToExisting } from './render.mjs';
 import { installObserver } from './observer.mjs';
 import { installSelection, relocalizeOverlay } from './overlay.mjs';
-import { setUiLang, resolveUiLang } from '../shared/i18n.mjs';
+import { setUiLang, resolveUiLang, t } from '../shared/i18n.mjs';
 
 // ---- 引擎全局状态 --------------------------------------------------------
 const state = {
@@ -92,8 +91,7 @@ export async function runEngine() {
     });
 
     // 缓存键 = 服务 + 源语言 + 目标语言 + 文本 hash
-    // ★ 必须带上语言：否则用户把目标语言从中文改成日文时，
-    //   会命中旧的中文译文，表现为"切换语言后没变化"。
+    // ★ 必须带上语言：否则用户把目标语言从中文改成日文时，会命中旧的中文译文，表现为"切换语言后没变化"。
     const cacheKey = (text) => {
       const { service, sourceLanguage, targetLanguage } = state.config;
       return `${service}|${sourceLanguage}->${targetLanguage}|${hashKey(text)}`;
@@ -298,19 +296,42 @@ async function kickOffTranslation(container) {
   }, 1000);
 }
 
+/**
+ * 计算容器可译文本总长度——用 textContent 而非 innerText，
+ * innerText 会强制同步布局（layout thrashing），textContent 只扫 DOM 节点。
+ * 过滤掉 script/style/link 等非展示元素。
+ */
+function getContentLen(container) {
+  if (!container) return 0;
+  const TEXT_NODES = ['script', 'style', 'link', 'meta', 'title', 'template', 'noscript'];
+  let len = 0;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      const parent = node.parentNode;
+      if (!parent) return NodeFilter.FILTER_REJECT;
+      const tag = parent.nodeName;
+      if (TEXT_NODES.includes(tag)) return NodeFilter.FILTER_REJECT;
+      // 跳过 display:none 的元素？这里不做——会强制布局。
+      // 少量隐藏节点文本被计入没关系，只用来判断"有没有足够内容"。
+      const t = (node.nodeValue || '').trim();
+      if (!t) return NodeFilter.FILTER_REJECT;
+      len += t.length;
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
+  while (walker.nextNode()) { /* len 已在 acceptNode 里累加 */ }
+  return len;
+}
+
 /** 判断容器里有没有"值得翻译的内容"——简单看文本节点总长度 */
 function hasContentToTranslate(container) {
-  if (!container) return false;
-  // body 必须是真实 body，不是 html 壳
-  if (!document.body) return false;
-  // body 必须有内容（不是空壳 SPA）
-  const textLen = (document.body.innerText || '').trim().length;
-  return textLen > 200;
+  if (!container || !document.body) return false;
+  return getContentLen(document.body) > 200;
 }
 
 /**
  * 等 body 有内容。用 MutationObserver 轮询 documentElement，
- * 一看到 body 出现且有 innerText 就 resolve。超时用 setTimeout。
+ * 一看到 body 出现且有足够文本就 resolve。超时用 setTimeout。
  */
 function waitForBodyContent(timeoutMs) {
   return new Promise(resolve => {
@@ -318,7 +339,7 @@ function waitForBodyContent(timeoutMs) {
 
     const checkAndResolve = () => {
       const body = document.body;
-      if (body && (body.innerText || '').trim().length > 200) {
+      if (body && getContentLen(body) > 200) {
         resolve(body);
         return true;
       }
@@ -387,19 +408,75 @@ function installErrorCapture() {
 }
 
 /**
+ * 模式切换气泡：屏幕上方居中短暂显示当前模式名称。
+ * 快捷键切换时用户看不到 popup，需要即时反馈"现在是什么模式"。
+ * 复用单个节点，重复切换只更新时间与文字，不会叠加多个气泡。
+ */
+function showModeToast(mode) {
+  const label = t(`popup.page.mode.${mode}`);
+  if (!label || label === `popup.page.mode.${mode}`) return;
+
+  let el = document.querySelector('.tmt-mode-toast');
+  if (!el) {
+    el = document.createElement('div');
+    el.className = 'tmt-mode-toast';
+    el.setAttribute('translate', 'no');
+    el.setAttribute('role', 'status');
+    el.style.cssText = [
+      'position:fixed',
+      'top:72px',
+      'left:50%',
+      'z-index:2147483647',
+      'max-width:min(80vw,420px)',
+      'padding:9px 18px',
+      'border-radius:999px',
+      'background:rgba(17,24,39,0.9)',
+      'color:#fff',
+      'font:500 14px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif',
+      'box-shadow:0 8px 24px rgba(0,0,0,0.28)',
+      'pointer-events:none',
+      'white-space:nowrap',
+      'overflow:hidden',
+      'text-overflow:ellipsis',
+      'opacity:0',
+      'transform:translate(-50%,-8px)',
+      'transition:opacity .16s ease,transform .16s ease',
+    ].join(';');
+    (document.body || document.documentElement).appendChild(el);
+  }
+
+  el.textContent = label;
+  // 重复触发时先归位，让过渡每次都能完整播放
+  el.style.transition = 'none';
+  el.style.opacity = '0';
+  el.style.transform = 'translate(-50%,-8px)';
+  void el.offsetWidth;
+  el.style.transition = 'opacity .16s ease,transform .16s ease';
+  el.style.opacity = '1';
+  el.style.transform = 'translate(-50%,0)';
+
+  clearTimeout(showModeToast._timer);
+  showModeToast._timer = setTimeout(() => {
+    el.style.opacity = '0';
+    el.style.transform = 'translate(-50%,-8px)';
+  }, 1400);
+}
+
+/**
  * 快捷键：Alt+Shift+T 轮转显示模式。
  * 写入配置并广播，popup 与其它标签页会同步。
  */
 function installShortcut() {
   document.addEventListener('keydown', (e) => {
     if (!(e.altKey && e.shiftKey) || (e.key || '').toLowerCase() !== 't') return;
-    const t = e.target;
-    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName || ''))) return;
+    const target = e.target;
+    if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName || ''))) return;
     e.preventDefault();
 
     const idx = MODE_CYCLE.indexOf(state.mode);
     const next = MODE_CYCLE[(idx + 1) % MODE_CYCLE.length];
     log.info(`快捷键切换显示模式：${state.mode} → ${next}`);
+    showModeToast(next);
 
     chrome.runtime.sendMessage({
       method: MSG.UPDATE_CONFIG,

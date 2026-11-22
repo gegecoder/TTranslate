@@ -47,6 +47,9 @@ export class Pipeline {
 
     // 结果回调——engine 设置的
     this.onBatchComplete = null;
+
+    // drain() 里等待 inFlight 空位的 Promise waiter 队列
+    this._drainWaiters = [];
   }
 
   /** 管线是否完全空闲（队列空 + 没有在途请求） */
@@ -57,12 +60,23 @@ export class Pipeline {
   /**
    * 丢弃排队中的任务（语言切换等场景：旧语言的任务和结果都不再需要）。
    * 在途请求无法中断，其返回值由 engine 按"收集代次"过滤掉。
+   * 这里额外把 inFlight 重置为 0——虽然在途请求还会回来调 onBatchComplete，
+   * 但 engine 的 gen 代次过滤会把旧结果丢弃；同时 inFlight 归零后 drain
+   * 不会再被"等空位"阻塞，后续新语言的 drain 能立即跑起来。
    */
   reset() {
     if (this.timer) { clearTimeout(this.timer); this.timer = null; }
     this.queue = [];
     this.inQueue.clear();
     this.cacheHit.clear();
+    // 关键：归零 inFlight，让 drain 的 Promise waiters 能立即收到
+    const stillFlying = this.inFlight;
+    this.inFlight = 0;
+    // 唤醒所有正在等 inFlight < maxInFlight 的 drain 循环
+    if (stillFlying > 0) {
+      this._drainWaiters?.forEach(r => r());
+      this._drainWaiters = [];
+    }
   }
 
   /** 入队一个段落。队列非空时会自动启动定时器 */
@@ -109,12 +123,14 @@ export class Pipeline {
    * 连续排空队列（整页翻译大批入队完成后调用）。
    * 原实现里剩余批次每批都要等 intervalMs，整页翻译白等 N×300ms；
    * 这里批间不等待，但限制同时在途的批次数，避免瞬时把服务打满。
+   * 并发空位用 Promise waiter 队列唤醒——drain 不做 25ms 短轮询。
    * 零星入队（MutationObserver 动态内容）仍走 enqueue 里的 interval 定时器。
    */
   async drain({ maxInFlight = 3 } = {}) {
     while (this.queue.length > 0) {
       if (this.inFlight >= maxInFlight) {
-        await new Promise(r => setTimeout(r, 25));   // 短轮询等空位
+        // 用 Promise waiter 等待 _run 结束时唤醒，避免 busy-wait
+        await new Promise(resolve => this._drainWaiters.push(resolve));
         continue;
       }
       this.flush(true);
@@ -179,7 +195,10 @@ export class Pipeline {
     }
 
     this.inFlight--;
-    // 3) 回给 engine 渲染（此时在途计数已减，engine 才能正确判断是否全部结束）
+    // 3) 如果 drain 有在等空位的 waiter，唤醒最早的那个
+    const waiter = this._drainWaiters?.shift();
+    if (waiter) waiter();
+    // 4) 回给 engine 渲染（此时在途计数已减，engine 才能正确判断是否全部结束）
     this.onBatchComplete?.(results);
   }
 

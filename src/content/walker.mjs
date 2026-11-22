@@ -8,7 +8,7 @@
  */
 
 import { MARK, log } from '../shared/constants.mjs';
-import { BLOCK_TAGS, getBlockAncestor, isTranslatable, looksCJK } from '../shared/utils.mjs';
+import { BLOCK_TAGS, getBlockAncestor, isTranslatable, looksCJK, getCachedDisplay } from '../shared/utils.mjs';
 
 /**
  * BLOCK_TAGS 的权威定义已迁移到 utils.mjs，这里直接复用。
@@ -118,20 +118,19 @@ function isBlockElement(el, rule) {
     const parent = el.parentElement;
     if (parent) {
       if (['NAV', 'UL', 'OL'].includes(parent.tagName)) return true;
-      const pd = getComputedStyle(parent).display;
+      // ★ 走共享的 getCachedDisplay，避免重复触发 getComputedStyle 同步布局
+      const pd = getCachedDisplay(parent);
       if (pd.includes('flex') || pd.includes('grid')) return true;
     }
     // 自身 display 非 inline（inline-block / inline-flex / block / flex / grid）
     // 也视为独立块：搜索栏/工具栏里的操作链接常被写成 inline-block，
-    // 多个相邻 <a> 会共享父级块祖先被合并成一段，导致翻译后兄弟元素互相污染
-    // （百度百科顶部 intlBtn + helpBtn 被串译成一个 <a>）。
+    // 多个相邻 <a> 会共享父级块祖先被合并成一段，导致翻译后兄弟元素互相污染。
     // 正文里默认 inline 的 <a>（如《论语·阳货》里的书名号链接）仍和周围文本合并，
     // 保持句级翻译连贯。
-    const selfD = getComputedStyle(el).display;
+    const selfD = getCachedDisplay(el);
     if (selfD !== 'inline') return true;
   }
-  const cs = getComputedStyle(el);
-  const d = cs.display;
+  const d = getCachedDisplay(el);
   if (d === 'none') return false;
   // inline / inline-block / inline-flex / inline-table 都算行内
   if (/^inline|^table/.test(d) && d !== 'inline-block' && d !== 'inline-flex') return false;
